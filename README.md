@@ -15,4 +15,11 @@ Note that CausalTensor is an active project and routinely publishes new releases
     $ pip install -U causaltensor
     
 ## Using CausalTensor
-Will update soon.
+We have implemented the following estimators including the traditional method Difference-in-Difference and recent proposed methods such as Synthetic Difference-in-Difference, Matrix Completion with Nuclear Norm Minimization, and De-biased Convex Panel Regression.  
+
+| Estimator      | Reference |
+| ----------- | ----------- |
+| Difference-in-Difference (DID)      | [Implemented through two-way fixed effects regression](http://web.mit.edu/insong/www/pdf/FEmatch-twoway.pdf)       |
+| Synthetic Difference-in-Difference (SDID)   | https://arxiv.org/pdf/1812.09970.pdf |
+| Matrix Completion with Nuclear Norm Minimization (MC-NNM)| https://arxiv.org/abs/1710.10251 |
+| De-biased Convex Panel Regression (DC-PR) | https://arxiv.org/abs/2106.02780 |
