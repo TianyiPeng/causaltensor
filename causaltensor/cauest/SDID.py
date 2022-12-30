@@ -4,12 +4,30 @@ import cvxpy as cp
 '''
     An implementation of "Synthetic Difference-in-Differences" from [1]
     
-    Credit to Andy Zheng for the revised version, 01/15/2022
+    Created by Tianyi Peng, 2021/03/01
+    Credit to Andy Zheng for the revised version, 2022/01/15
     
     [1] Arkhangelsky, Dmitry, Susan Athey, David A. Hirshberg, Guido W. Imbens, and Stefan Wager. Synthetic difference in differences. No. w25532. National Bureau of Economic Research, 2019.
 '''
 
-def SDID(O, Z, treat_units = [0], starting_time = 100):
+def SDID_preprocess(O, Z):
+    n1, n2 = O.shape
+    treat_units = []
+    for i in range(n1):
+        if Z[i, -1] != 0:
+            treat_units.append(i)
+    if len(treat_units) == 0:
+        print('no treated unit, or the treatment is not a block!!')
+        return
+    i = treat_units[0]
+    for j in range(n2-1, -1, -1):
+        if Z[i, j] == 0:
+            break
+    starting_time = j + 1
+    return treat_units, starting_time
+    
+
+def SDID(O, Z, treat_units = [-1], starting_time = -1):
     '''
         Input: 
             O: nxT observation matrix
@@ -19,6 +37,9 @@ def SDID(O, Z, treat_units = [0], starting_time = 100):
         Output:
             the average treatment effect estimated by [1] 
     '''
+
+    if (starting_time == -1):
+        treat_units, starting_time = SDID_preprocess(O, Z)
 
     donor_units = []
     for i in range(O.shape[0]):
@@ -109,8 +130,8 @@ def SDID(O, Z, treat_units = [0], starting_time = 100):
     for T1 in range(1000):
         a_new = np.sum((O-tau*Z-one_col.dot(b.T))*weights, axis=1).reshape((n1, 1)) / np.sum(weights, axis=1).reshape((n1, 1))
         b_new = np.sum((O-tau*Z-a.dot(one_row))*weights, axis=0).reshape((n2, 1)) / np.sum(weights, axis=0).reshape((n2, 1))
-        if (np.sum((b_new - b)**2) < 1e-5 * np.sum(b**2) and
-              np.sum((a_new - a)**2) < 1e-5 * np.sum(a**2)):
+        if (np.sum((b_new - b)**2) < 1e-7 * np.sum(b**2) and
+              np.sum((a_new - a)**2) < 1e-7 * np.sum(a**2)):
             converged = True
             break
         a = a_new
