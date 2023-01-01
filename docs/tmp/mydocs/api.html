@@ -1,0 +1,181 @@
+<!DOCTYPE html>
+<html class="writer-html5" lang="en" >
+<head>
+  <meta charset="utf-8" /><meta name="generator" content="Docutils 0.17.1: http://docutils.sourceforge.net/" />
+
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>API &mdash; CausalTensor 0.1 documentation</title>
+      <link rel="stylesheet" href="_static/pygments.css" type="text/css" />
+      <link rel="stylesheet" href="_static/css/theme.css" type="text/css" />
+  <!--[if lt IE 9]>
+    <script src="_static/js/html5shiv.min.js"></script>
+  <![endif]-->
+  
+        <script data-url_root="./" id="documentation_options" src="_static/documentation_options.js"></script>
+        <script src="_static/jquery.js"></script>
+        <script src="_static/underscore.js"></script>
+        <script src="_static/doctools.js"></script>
+        <script async="async" src="https://cdn.jsdelivr.net/npm/mathjax@3/es5/tex-mml-chtml.js"></script>
+    <script src="_static/js/theme.js"></script>
+    <link rel="index" title="Index" href="genindex.html" />
+    <link rel="search" title="Search" href="search.html" />
+    <link rel="next" title="References" href="ref.html" />
+    <link rel="prev" title="Usage" href="usage.html" /> 
+</head>
+
+<body class="wy-body-for-nav"> 
+  <div class="wy-grid-for-nav">
+    <nav data-toggle="wy-nav-shift" class="wy-nav-side">
+      <div class="wy-side-scroll">
+        <div class="wy-side-nav-search" >
+            <a href="index.html" class="icon icon-home"> CausalTensor
+          </a>
+              <div class="version">
+                0.1.4
+              </div>
+<div role="search">
+  <form id="rtd-search-form" class="wy-form" action="search.html" method="get">
+    <input type="text" name="q" placeholder="Search docs" />
+    <input type="hidden" name="check_keywords" value="yes" />
+    <input type="hidden" name="area" value="default" />
+  </form>
+</div>
+        </div><div class="wy-menu wy-menu-vertical" data-spy="affix" role="navigation" aria-label="Navigation menu">
+              <ul class="current">
+<li class="toctree-l1"><a class="reference internal" href="usage.html">Usage</a></li>
+<li class="toctree-l1 current"><a class="current reference internal" href="#">API</a><ul>
+<li class="toctree-l2"><a class="reference internal" href="#difference-in-difference">Difference-in-Difference</a></li>
+<li class="toctree-l2"><a class="reference internal" href="#de-biased-convex-panel-regression">De-biased Convex Panel Regression</a></li>
+<li class="toctree-l2"><a class="reference internal" href="#synthetic-difference-in-difference">Synthetic Difference-in-Difference</a></li>
+<li class="toctree-l2"><a class="reference internal" href="#matrix-completion-with-nuclear-norm-minimization">Matrix Completion with Nuclear Norm Minimization</a></li>
+</ul>
+</li>
+<li class="toctree-l1"><a class="reference internal" href="ref.html">References</a></li>
+</ul>
+
+        </div>
+      </div>
+    </nav>
+
+    <section data-toggle="wy-nav-shift" class="wy-nav-content-wrap"><nav class="wy-nav-top" aria-label="Mobile navigation menu" >
+          <i data-toggle="wy-nav-top" class="fa fa-bars"></i>
+          <a href="index.html">CausalTensor</a>
+      </nav>
+
+      <div class="wy-nav-content">
+        <div class="rst-content">
+          <div role="navigation" aria-label="Page navigation">
+  <ul class="wy-breadcrumbs">
+      <li><a href="index.html" class="icon icon-home"></a></li>
+      <li class="breadcrumb-item active">API</li>
+      <li class="wy-breadcrumbs-aside">
+            <a href="_sources/api.rst.txt" rel="nofollow"> View page source</a>
+      </li>
+  </ul>
+  <hr/>
+</div>
+          <div role="main" class="document" itemscope="itemscope" itemtype="http://schema.org/Article">
+           <div itemprop="articleBody">
+             
+  <section id="api">
+<h1>API<a class="headerlink" href="#api" title="Permalink to this headline"></a></h1>
+<section id="difference-in-difference">
+<h2>Difference-in-Difference<a class="headerlink" href="#difference-in-difference" title="Permalink to this headline"></a></h2>
+<p>Difference-in-difference (DID) is a popular method to address panel data problems.
+We use a two-way fixed effects regression to estimate the average treatment effect on the treated entries (ATT).
+In particular, we solve the following regression by linear regression</p>
+<div class="math notranslate nohighlight">
+\[\min \sum_{ij} (O_{ij} - a_i - b_j - \tau Z_{ij})^2\]</div>
+<p>where <span class="math notranslate nohighlight">\(a_{i}, b_{j}\)</span> are unknown fixed effects and <span class="math notranslate nohighlight">\(\tau\)</span> is the ATT.</p>
+<p>To use DID, simply call</p>
+<div class="highlight-python notranslate"><div class="highlight"><pre><span></span><span class="n">M</span><span class="p">,</span> <span class="n">tau</span> <span class="o">=</span> <span class="n">DID</span><span class="p">(</span><span class="n">O</span><span class="p">,</span> <span class="n">Z</span><span class="p">)</span>
+</pre></div>
+</div>
+<p>with two return parameters <cite>M</cite> and <cite>tau</cite>. Here <span class="math notranslate nohighlight">\(M_{ij}=a_{i}+b_{j}\)</span> is the estimated ideal outcome; and <cite>tau</cite> is the estimated ATT.</p>
+</section>
+<section id="de-biased-convex-panel-regression">
+<h2>De-biased Convex Panel Regression<a class="headerlink" href="#de-biased-convex-panel-regression" title="Permalink to this headline"></a></h2>
+<p>The second method is De-biaeed Convex Panel Regression (DC-PR) proposed by <a class="reference internal" href="ref.html#fariaslipeng22" id="id1"><span>[FariasLiPeng22]</span></a>.
+Note that an issue of the DID model is that, $a_i+b_j$ are often too simple to describe the complex reality of the outcome. As a fix,
+a low-rank factor model to generalize <span class="math notranslate nohighlight">\(a_i+b_j\)</span> has been advocated.</p>
+<p>The idea in <a class="reference internal" href="ref.html#fariaslipeng22" id="id2"><span>[FariasLiPeng22]</span></a> is to firstly solve the following low-rank regression problem by replacing <span class="math notranslate nohighlight">\(a_i+b_j\)</span> in DID by a low-rank matrix <span class="math notranslate nohighlight">\(M\)</span></p>
+<div class="math notranslate nohighlight">
+\[\hat{M}, \hat{\tau} = \arg\min \sum_{ij} (O_{ij}-M_{ij}-\tau Z_{ij})^2 + \lambda \|M\|_{*}\]</div>
+<p>where $|M|_{*}$ is the nuclear norm to penalize the low-rankness of the matrix and $lambda$ is a tunning parameter. The second step of [2] is to mitigate the bias induced by the regularization parameter (it also reflects the interaction between $hat{M}$ and $Z$):</p>
+<div class="math notranslate nohighlight">
+\[\tau^{d} = \hat{\tau} - \lambda \frac{&lt;Z, \hat{U}\hat{V}^{\top}&gt;}{\|P_{\hat{T}^{\perp}}(Z)\|_{F}^2}.\]</div>
+<p>To use DC-PR, call</p>
+<div class="highlight-python notranslate"><div class="highlight"><pre><span></span><span class="n">M</span><span class="p">,</span> <span class="n">tau</span><span class="p">,</span> <span class="n">M_raw</span><span class="p">,</span> <span class="n">tau_raw</span> <span class="o">=</span> <span class="n">DC_PR_auto_rank</span><span class="p">(</span><span class="n">O</span><span class="p">,</span> <span class="n">Z</span><span class="p">)</span>
+</pre></div>
+</div>
+<p>where <cite>M</cite>, <cite>tau</cite> are the de-biased versions and <cite>M_raw</cite> and <cite>tau_raw</cite> are the optimizers for the first step. This function helps to find the proper rank for <span class="math notranslate nohighlight">\(M\)</span> (but not very stable, and may be updated later). You can also use</p>
+<div class="highlight-python notranslate"><div class="highlight"><pre><span></span><span class="n">M</span><span class="p">,</span> <span class="n">tau</span><span class="p">,</span> <span class="n">M_raw</span><span class="p">,</span> <span class="n">tau_raw</span> <span class="o">=</span> <span class="n">DC_PR_with_suggested_rank</span><span class="p">(</span><span class="n">O</span><span class="p">,</span> <span class="n">Z</span><span class="p">,</span> <span class="n">suggest_r</span> <span class="o">=</span> <span class="n">r</span><span class="p">)</span>
+</pre></div>
+</div>
+<p>if you have an estimation of the rank of <span class="math notranslate nohighlight">\(M\)</span> by yourself.</p>
+<p>In addition, we also provide a formula to estimate the empirical standard deviation of DC-PR when noises are (heterogenoues) independent sub-Gaussian. See <a class="reference internal" href="ref.html#fariaslipeng22" id="id3"><span>[FariasLiPeng22]</span></a> for further details.</p>
+<div class="highlight-python notranslate"><div class="highlight"><pre><span></span><span class="n">std</span> <span class="o">=</span> <span class="n">std_debiased_convex</span><span class="p">(</span><span class="n">O</span><span class="p">,</span> <span class="n">Z</span><span class="p">,</span> <span class="n">M_raw</span><span class="p">,</span> <span class="n">tau_raw</span><span class="p">)</span>
+</pre></div>
+</div>
+</section>
+<section id="synthetic-difference-in-difference">
+<h2>Synthetic Difference-in-Difference<a class="headerlink" href="#synthetic-difference-in-difference" title="Permalink to this headline"></a></h2>
+<p>The second method is called synthetic difference-in-difference (SDID) proposed by <a class="reference internal" href="ref.html#arkhangelsky21" id="id4"><span>[Arkhangelsky21]</span></a>. Readers can read <a class="reference internal" href="ref.html#arkhangelsky21" id="id5"><span>[Arkhangelsky21]</span></a> for more details. To use SDID, simply call</p>
+<div class="highlight-python notranslate"><div class="highlight"><pre><span></span><span class="n">tau</span> <span class="o">=</span> <span class="n">SDID</span><span class="p">(</span><span class="n">O</span><span class="p">,</span> <span class="n">Z</span><span class="p">)</span>
+</pre></div>
+</div>
+<p>where <cite>tau</cite> is the estimation of SDID.</p>
+</section>
+<section id="matrix-completion-with-nuclear-norm-minimization">
+<h2>Matrix Completion with Nuclear Norm Minimization<a class="headerlink" href="#matrix-completion-with-nuclear-norm-minimization" title="Permalink to this headline"></a></h2>
+<p>The third method is based on matrix completion method proposed by <a class="reference internal" href="ref.html#athey21" id="id6"><span>[Athey21]</span></a>. The idea is to solve the following matrix completion problem, only using the outcome data without intervention (i.e., <span class="math notranslate nohighlight">\(Z_{ij}=0\)</span>)</p>
+<div class="math notranslate nohighlight">
+\[\hat{M}, \hat{a}, \hat{b} = \arg\min \sum_{ij, Z_{ij}=0} (O_{ij}-M_{ij} - a_i - b_j)^2 + \lambda \|M\|_{*}\]</div>
+<p>where <span class="math notranslate nohighlight">\(\|M\|_{*}\)</span> is the nuclear norm that penalizes the low-rankness of the matrix (here <span class="math notranslate nohighlight">\(a_{i}\)</span> and <span class="math notranslate nohighlight">\(b_{j}\)</span> are used to improve the empirical performance, as suggested by <a class="reference internal" href="ref.html#athey21" id="id7"><span>[Athey21]</span></a>).</p>
+<p>After <span class="math notranslate nohighlight">\(\hat{M}, \hat{a}, \hat{b}\)</span> are obtained, the ATT <span class="math notranslate nohighlight">\(\hat{\tau}\)</span> can be estimated simply by</p>
+<div class="math notranslate nohighlight">
+\[\hat{\tau} = \frac{\sum_{ij, Z_{ij}=1} (O_{ij} - \hat{M}_{ij} - \hat{a}_i - \hat{b}_{j})}{\sum_{ij, Z_{ij}=1} 1}.\]</div>
+<p>To use this method (referred to as matrix completion with nuclear norm minimization, or MC-NNM), when you have an estimation of the rank of the matrix <span class="math notranslate nohighlight">\(M\)</span> (e.g., by checking the spectrum), call</p>
+<div class="highlight-python notranslate"><div class="highlight"><pre><span></span><span class="n">M</span><span class="p">,</span> <span class="n">a</span><span class="p">,</span> <span class="n">b</span><span class="p">,</span> <span class="n">tau</span> <span class="o">=</span> <span class="n">MC_NNM_with_suggested_rank</span><span class="p">(</span><span class="n">O</span><span class="p">,</span> <span class="mi">1</span><span class="o">-</span><span class="n">Z</span><span class="p">,</span> <span class="n">suggest_r</span> <span class="o">=</span> <span class="n">r</span><span class="p">)</span>
+</pre></div>
+</div>
+<p>where <cite>M</cite>, <cite>a</cite>, <cite>b</cite> are the optimizers and <cite>tau</cite> is the estimated ATT.</p>
+<p>We also provide a function to help you find the right parameter $lambda$ or rank by cross-validation:</p>
+<div class="highlight-python notranslate"><div class="highlight"><pre><span></span><span class="n">M</span><span class="p">,</span> <span class="n">a</span><span class="p">,</span> <span class="n">b</span><span class="p">,</span> <span class="n">tau</span> <span class="o">=</span> <span class="n">MC_NNM_with_cross_validation</span><span class="p">(</span><span class="n">O</span><span class="p">,</span> <span class="mi">1</span><span class="o">-</span><span class="n">Z</span><span class="p">)</span>
+</pre></div>
+</div>
+</section>
+</section>
+
+
+           </div>
+          </div>
+          <footer><div class="rst-footer-buttons" role="navigation" aria-label="Footer">
+        <a href="usage.html" class="btn btn-neutral float-left" title="Usage" accesskey="p" rel="prev"><span class="fa fa-arrow-circle-left" aria-hidden="true"></span> Previous</a>
+        <a href="ref.html" class="btn btn-neutral float-right" title="References" accesskey="n" rel="next">Next <span class="fa fa-arrow-circle-right" aria-hidden="true"></span></a>
+    </div>
+
+  <hr/>
+
+  <div role="contentinfo">
+    <p>&#169; Copyright 2022, Tianyi Peng.</p>
+  </div>
+
+  Built with <a href="https://www.sphinx-doc.org/">Sphinx</a> using a
+    <a href="https://github.com/readthedocs/sphinx_rtd_theme">theme</a>
+    provided by <a href="https://readthedocs.org">Read the Docs</a>.
+   
+
+</footer>
+        </div>
+      </div>
+    </section>
+  </div>
+  <script>
+      jQuery(function () {
+          SphinxRtdTheme.Navigation.enable(true);
+      });
+  </script> 
+
+</body>
+</html>

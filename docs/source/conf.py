@@ -2,12 +2,12 @@
 
 # -- Project information
 
-project = 'Lumache'
-copyright = '2021, Graziella'
-author = 'Graziella'
+project = 'CausalTensor'
+copyright = '2022, Tianyi Peng'
+author = 'Tianyi Peng'
 
 release = '0.1'
-version = '0.1.0'
+version = '0.1.4'
 
 # -- General configuration
 
@@ -17,6 +17,7 @@ extensions = [
     'sphinx.ext.autodoc',
     'sphinx.ext.autosummary',
     'sphinx.ext.intersphinx',
+    'sphinx.ext.mathjax',
 ]
 
 intersphinx_mapping = {
