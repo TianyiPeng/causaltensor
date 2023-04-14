@@ -1,6 +1,6 @@
 import numpy as np
 
-def DID(O, Z, tau_star = 0):
+def DID(O, Z, tau_star = 0, output_var=False):
     n1 = O.shape[0]
     n2 = O.shape[1]
 
@@ -38,7 +38,7 @@ def DID_with_missing_entries(O, Omega, Z, tau_star = 0, debug=False):
         a_new = np.sum(Omega*(O-tau*Z-one_col.dot(b.T)), axis=1).reshape((n1, 1)) / np.sum(Omega, axis=1).reshape((n1, 1))
         b_new = np.sum(Omega*(O-tau*Z-a_new.dot(one_row)), axis=0).reshape((n2, 1)) / np.sum(Omega, axis=0).reshape((n2, 1))
 
-        if (np.sum((b_new - b)**2) < 1e-5 * np.sum(b**2) and np.sum((a_new - a)**2) < 1e-5 * np.sum(a**2)):
+        if (np.sum((b_new - b)**2) < 1e-7 * np.sum(b**2) and np.sum((a_new - a)**2) < 1e-7 * np.sum(a**2)):
             break
         a = a_new
         b = b_new
