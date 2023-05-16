@@ -154,3 +154,5 @@ tests/.DS_Store
 docs/.DS_Store
 docs/source/.DS_Store
 .DS_Store
+src/causaltensor/.DS_Store
+.DS_Store
