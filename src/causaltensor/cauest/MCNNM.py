@@ -1,6 +1,6 @@
 import numpy as np
 
-def MC_NNM_with_l(O, Ω, l, suggest = []):
+def MC_NNM_with_l(O, Ω, l, suggest = [], covaraites = []):
     n1 = O.shape[0]
     n2 = O.shape[1]
 
@@ -60,7 +60,6 @@ def MC_NNM_with_suggested_rank(O, Ω, suggest_r = 1):
     l = l / coef
     while (True):
         M, a, b, tau = MC_NNM_with_l(O, Ω, l, suggest = [pre_M, pre_a, pre_b])
-        #print(l, np.linalg.matrix_rank(M))
         if (np.linalg.matrix_rank(M) >= suggest_r):
             return M, a, b, tau
         pre_M = M
@@ -70,6 +69,10 @@ def MC_NNM_with_suggested_rank(O, Ω, suggest_r = 1):
         l = l / coef
 
 def MC_NNM_with_cross_validation(O, Ω, K=5, list_l = []):
+    """
+    K-fold cross validation
+    
+    """
 
     one_row = np.ones((1, O.shape[1]))
     one_col = np.ones((O.shape[0], 1))
