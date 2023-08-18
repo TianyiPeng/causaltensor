@@ -6,14 +6,37 @@ def noise_to_signal(X, M, Ω):
 def abs_mean(X, M, Ω):
     return np.sum(np.abs((X-M)*Ω)) / np.sum(Ω)
 
+def svd_fast(M):
+    is_swap = False
+    if M.shape[0] > M.shape[1]:
+        is_swap = True
+        M = M.T
+
+    A = M @ M.T
+    u, ss, uh = np.linalg.svd(A, full_matrices=False)
+    ss[ss < 1e-7] = 0
+    s = np.sqrt(ss)
+    sinv = 1.0 / (s + 1e-7*(s<1e-7))
+    vh = sinv.reshape(M.shape[0], 1) * (uh @ M)
+
+    if is_swap:
+        return vh.T, s, u.T
+    else:
+        return u, s, vh
+
 ## least-squares solved via single SVD
-def SVD(M,r, return_factor=False): #input matrix M, approximating with rank r
-    u,s,vh = np.linalg.svd(M, full_matrices=False) #s is diag
-    X = u[:,:r].dot(np.diag(np.sqrt(s[:r])))
-    Y = vh[:r,:].T.dot(np.diag(np.sqrt(s[:r])))
-    if (return_factor):
-    	return X.dot(Y.T), X, Y## least-squares solved via single SVD
-    return X.dot(Y.T)
+def SVD(M, r):
+    """
+        input matrix M, approximating with rank r
+    """
+    u, s, vh = svd_fast(M)
+    s[r:] = 0
+    return (u * s).dot(vh)
+
+def SVD_soft(X, l):
+    u, s, vh = svd_fast(X)
+    s_threshold = np.maximum(0,s-l)
+    return (u * s_threshold).dot(vh)
     
 
 def L2_error(s, r):
