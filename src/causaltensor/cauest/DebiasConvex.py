@@ -15,6 +15,7 @@ def debias(M, tau, Z, l):
     for k in np.arange(Z.shape[2]):
         for m in np.arange(k, Z.shape[2]):
             D[k, m] = np.sum(PTperpZ[:, :, k] * PTperpZ[:, :, m])
+            D[m, k] = D[k, m]
 
     Delta = np.array([l * np.sum(Z[:, :, k]*(u.dot(vh))) for k in range(Z.shape[2])]) 
 
