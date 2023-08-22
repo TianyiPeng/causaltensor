@@ -5,8 +5,7 @@ import statsmodels.api as sm
 import statsmodels.formula.api as smf
 
 
-
-def feature_selection(Y1, Y0, T0, alphas = np.logspace(-5,10,20, base=2.0)):
+def feature_selection(Y1, Y0, T0, alphas = np.logspace(-5,2,50, base=2.0)):
     """
     Use Linear and Lasso Regressions to select which features (control stores) model the outcome (treatment store)
 
@@ -26,7 +25,7 @@ def feature_selection(Y1, Y0, T0, alphas = np.logspace(-5,10,20, base=2.0)):
         return np.array([]), -np.inf
 
     # Create Training and Validation sets
-    T0_train = T0 // 2
+    T0_train = int(0.75*T0)
     X_train, y_train = Y0[:T0_train, :], Y1[:T0_train]
     X_val, y_val = Y0[T0_train:, :], Y1[T0_train:]
 
@@ -37,12 +36,12 @@ def feature_selection(Y1, Y0, T0, alphas = np.logspace(-5,10,20, base=2.0)):
     # Fit Linear Regression
 
     # Check if we have a full-row rank matrix
-    if num_control > T0:    # if features (num_control) are more than examples (T0), reduce the features to T0
+    if num_control > T0:    # if features (num_control) are more than examples (T0_train), reduce the features to T0_train
         perm = np.random.permutation(num_control)
         select = np.array([False for i in range(num_control)])
         select[perm[:T0]] = True
     else:   # select everything
-        select = np.array([True for i in range(num_control)]) 
+        select = np.array([True for i in range(num_control)])
 
     OLS_estimator = LinearRegression(fit_intercept=True)
     OLS_estimator.fit(X_train[:, select], y_train)
@@ -50,6 +49,7 @@ def feature_selection(Y1, Y0, T0, alphas = np.logspace(-5,10,20, base=2.0)):
     if score > max_score:
         max_score = score
         ans_select = select
+
 
     # Fit Lasso Regression
     for alpha in alphas:
@@ -67,6 +67,7 @@ def feature_selection(Y1, Y0, T0, alphas = np.logspace(-5,10,20, base=2.0)):
         OLS_estimator = LinearRegression(fit_intercept=True)
         OLS_estimator.fit(X_train[:, select], y_train)
         score = OLS_estimator.score(X_val[:, select], y_val)
+   
         if score > max_score:
             max_score = score
             ans_select = select
@@ -97,11 +98,10 @@ def ols_inference(Y1, Y0, T0):
     @return tau: average treatment effect on test unit redicted by synthetic control
     """
 
-    T1 = len(Y1)-T0
     select, max_score = feature_selection(Y1, Y0, T0) #get features from lasso
     if select.size == 0: #if no controls, skip
-        return {'pvals' : -1}
-    
+        return None, None
+    print(f"Final: {select}, {max_score}")
     Y0_control = Y0[:,select]   # keep only selected control units
     X_pre = Y0_control[:T0,:]    
     y_pre = Y1[:T0]
@@ -113,7 +113,7 @@ def ols_inference(Y1, Y0, T0):
         model = sm.OLS(y_pre, X_pre)
     else:
         y_pre -= np.mean(X_pre, axis = 1)
-        y = pd.DataFrame(y, columns = ['y'])
+        y = pd.DataFrame(y_pre, columns = ['y'])
         model = smf.ols(formula='y ~ 1', data = y)
     
     results = model.fit()   
@@ -146,11 +146,11 @@ def format_data(O, Z):
     @return Y1: T x treatment_units observation matrix
     @return control_units: column indices of the control units in O
     """
-    T = Z.shape[0]
-    control_units = np.where(np.all(Z == 0, axis=1))[0]
+    N = Z.shape[1]
+    control_units = np.where(np.all(Z == 0, axis=0))[0]
     Y0 = O[:, control_units]
-    Y1 = O[~np.isin(np.arange(T), control_units)]
-    T0 = np.where(Y1.any(axis=0))[0][0]
+    Y1 = O[:, ~np.isin(np.arange(N), control_units)]
+    T0 = np.where(Z.any(axis=1))[0][0]
     return T0, Y0, Y1, control_units
 
 
@@ -180,6 +180,3 @@ def synthetic_control(O, Z):
     
     tau /= S    
     return M, tau
-
-
-    
