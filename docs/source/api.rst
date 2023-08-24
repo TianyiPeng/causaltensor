@@ -25,16 +25,16 @@ with two return parameters `M` and `tau`. Here :math:`M_{ij}=a_{i}+b_{j}`` is th
 De-biased Convex Panel Regression
 **********************************************************
 
-The second method is De-biaeed Convex Panel Regression (DC-PR) proposed by [FariasLiPeng22]_. 
-Note that an issue of the DID model is that, $a_i+b_j$ are often too simple to describe the complex reality of the outcome. As a fix, 
+The second method is De-biased Convex Panel Regression (DC-PR) proposed by [FariasLiPeng22]_. 
+Note that an issue of the DID model is that, :math: `a_i+b_j` are often too simple to describe the complex reality of the outcome. As a fix, 
 a low-rank factor model to generalize :math:`a_i+b_j` has been advocated. 
 
-The idea in [FariasLiPeng22]_ is to firstly solve the following low-rank regression problem by replacing :math:`a_i+b_j` in DID by a low-rank matrix :math:`M`
+The idea in [FariasLiPeng22]_ is to first solve the following low-rank regression problem by replacing :math:`a_i+b_j` in DID with a low-rank matrix :math:`M`
 
 .. math::
    \hat{M}, \hat{\tau} = \arg\min \sum_{ij} (O_{ij}-M_{ij}-\tau Z_{ij})^2 + \lambda \|M\|_{*}
 
-where $\|M\|_{*}$ is the nuclear norm to penalize the low-rankness of the matrix and $\lambda$ is a tunning parameter. The second step of [2] is to mitigate the bias induced by the regularization parameter (it also reflects the interaction between $\hat{M}$ and $Z$):
+where :math:`\|M\|_{*}`$ is the nuclear norm to penalize the low-rankness of the matrix and :math: `\lambda` is a tuning parameter. The second step of [2] is to mitigate the bias induced by the regularization parameter (it also reflects the interaction between :math:`\hat{M}` and :math:`Z`):
 
 .. math::
    \tau^{d} = \hat{\tau} - \lambda \frac{<Z, \hat{U}\hat{V}^{\top}>}{\|P_{\hat{T}^{\perp}}(Z)\|_{F}^2}.
@@ -43,21 +43,32 @@ To use DC-PR, call
 
 .. code-block:: python
    
-   M, tau, M_raw, tau_raw = DC_PR_auto_rank(O, Z)
+   M, tau, std = DC_PR_auto_rank(O, Z)
 
-where `M`, `tau` are the de-biased versions and `M_raw` and `tau_raw` are the optimizers for the first step. This function helps to find the proper rank for :math:`M` (but not very stable, and may be updated later). You can also use
+where `M`, `tau` are the de-biased estimators and `std` is the estimator for the standard deviation. This function helps to find the proper rank for :math:`M` (but not very stable, and may be updated later). You can also use
 
 .. code-block:: python
 
-   M, tau, M_raw, tau_raw = DC_PR_with_suggested_rank(O, Z, suggest_r = r)
+   M, tau, std = DC_PR_with_suggested_rank(O, Z, suggest_r = r)
 
 if you have an estimation of the rank of :math:`M` by yourself. 
 
-In addition, we also provide a formula to estimate the empirical standard deviation of DC-PR when noises are (heterogenoues) independent sub-Gaussian. See [FariasLiPeng22]_ for further details. 
+We also implemented the panel regression with a hard rank constraint:
+
+.. math::
+\hat{M}, \hat{\tau} = \arg\min_{rank(M)\leq r} \sum_{ij} (O_{ij}-M_{ij}-\tau Z_{ij})^2
+
+This is a non-convex optimization problem and we used the alternate minimization between $M$ and $\tau$ for the optimization. The theoretical guarantee for this non-convex method is weaker than the convex method above (the convergence to the global optimum is not always guaranteed), but the practical performance is comparable (sometimes even better).  
 
 .. code-block:: python
+   M, tau, std = DC_PR_auto_rank(O, Z, method='non-convex')
+   M, tau, std = DC_PR_with_suggested_rank(O, Z, suggest_r = 2, method='non-convex')
 
-   std = std_debiased_convex(O, Z, M_raw, tau_raw)
+We also provide an option to select `convex` or `non-convex` panel regression in a data-driven fashion. This is recommended in practice.
+
+.. code-block:: python
+   M, tau, std = DC_PR_auto_rank(O, Z, method='auto')
+   M, tau, std = DC_PR_with_suggested_rank(O, Z, suggest_r = 2, method='auto')
 
 
 Synthetic Difference-in-Difference
