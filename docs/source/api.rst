@@ -56,7 +56,7 @@ if you have an estimation of the rank of :math:`M` by yourself.
 We also implemented the panel regression with a hard rank constraint:
 
 .. math::
-\hat{M}, \hat{\tau} = \arg\min_{rank(M)\leq r} \sum_{ij} (O_{ij}-M_{ij}-\tau Z_{ij})^2
+   \hat{M}, \hat{\tau} = \arg\min_{rank(M)\leq r} \sum_{ij} (O_{ij}-M_{ij}-\tau Z_{ij})^2
 
 This is a non-convex optimization problem and we used the alternate minimization between $M$ and $\tau$ for the optimization. The theoretical guarantee for this non-convex method is weaker than the convex method above (the convergence to the global optimum is not always guaranteed), but the practical performance is comparable (sometimes even better).  
 

@@ -138,7 +138,7 @@ def solve_tau(O, Z):
     tau = Xinv @ (X.T @ y)
     return tau 
 
-def DC_PR_with_suggested_rank(O, Z, suggest_r = 1, non_convex = False):
+def DC_PR_with_suggested_rank(O, Z, suggest_r = 1, method = 'convex'):
     """
         De-biased Convex Panel Regression with the suggested rank. Gradually decrease the nuclear-norm regularizer l until the rank of the next-iterated estimator exceeds r.
     
@@ -150,7 +150,7 @@ def DC_PR_with_suggested_rank(O, Z, suggest_r = 1, non_convex = False):
     ## determine pre_tau
     pre_tau = solve_tau(O, Z)
 
-    if non_convex == False:
+    if method == 'convex' or method == 'auto':
         ## determine l
         coef = 1.1
         _, s, _ = util.svd_fast(O-np.tensordot(Z, pre_tau,  axes=([2], [0])))
@@ -168,9 +168,15 @@ def DC_PR_with_suggested_rank(O, Z, suggest_r = 1, non_convex = False):
             pre_M = M
             pre_tau = tau
             l = l / coef
-    else:
+    if method == 'non-convex':
         M, tau = non_convex_PR(O, Z, suggest_r, initial_tau = pre_tau)
-        
+
+    if method == 'auto':
+        M1, tau1 = non_convex_PR(O, Z, suggest_r, initial_tau = solve_tau(O, Z))
+        if np.linalg.matrix_rank(M) != suggest_r or np.linalg.norm(O-M-np.tensordot(Z, tau,  axes=([2], [0]))) > np.linalg.norm(O-M1-np.tensordot(Z, tau1,  axes=([2], [0]))):
+            M = M1
+            tau = tau1
+
     CI = panel_regression_CI(M, Z, O-M-np.tensordot(Z, tau,  axes=([2], [0])))
     standard_deviation = np.sqrt(np.diag(CI))
     if len(tau) == 1:
@@ -178,10 +184,10 @@ def DC_PR_with_suggested_rank(O, Z, suggest_r = 1, non_convex = False):
     else:
         return M, tau, standard_deviation
 
-def DC_PR_auto_rank(O, Z, spectrum_cut = 0.002):
+def DC_PR_auto_rank(O, Z, spectrum_cut = 0.002, method='convex'):
     s = np.linalg.svd(O, full_matrices = False, compute_uv=False)
     suggest_r = np.sum(np.cumsum(s**2) / np.sum(s**2) <= 1-spectrum_cut)
-    return DC_PR_with_suggested_rank(O, Z, suggest_r = suggest_r)
+    return DC_PR_with_suggested_rank(O, Z, suggest_r = suggest_r, method=method)
 
 
 def projection_T_orthogonal(Z, M):

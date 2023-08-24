@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "causaltensor"
-version = "0.1.6"
+version = "0.1.7"
 description = "Package for causal inference in panels"
 readme = "README.md"
 authors = [{ name = "Tianyi Peng", email = "tianyipeng95@gmail.com"}]
