@@ -25,7 +25,7 @@ def stagger_pattern_RSC(O, Z, suggest_r = 1):
     tau = np.sum(Z*(O-Mhat)) / np.sum(Z)
     return Mhat, tau
 
-def synthetic_control(O, suggest_r=-1, treat_units = [0], starting_time = 100):
+def robust_synthetic_control(O, suggest_r=-1, treat_units = [0], starting_time = 100):
     ##Step 1, denoise
 
     if (starting_time == 0):
