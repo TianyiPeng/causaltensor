@@ -53,7 +53,7 @@ def feature_selection(Y1, Y0, T0, alphas = np.logspace(-5,2,50, base=2.0)):
 
     # Fit Lasso Regression
     for alpha in alphas:
-        lasso_estimator = Lasso(alpha=alpha, fit_intercept=True)
+        lasso_estimator = Lasso(alpha=alpha, fit_intercept=True, max_iter=5000)
         lasso_estimator.fit(X_train, y_train)
 
         # Get non-zero features (control units)
@@ -84,7 +84,7 @@ def feature_selection(Y1, Y0, T0, alphas = np.logspace(-5,2,50, base=2.0)):
     return ans_select, max_score
 
 
-def ols_inference(Y1, Y0, T0):
+def ols_inference(Y1, Y0, T0, select_features=False):
     """
     given some treatment outcome data as well as some control outcome data,
     create a synthetic control and estimate the average treatment effect of the intervention
@@ -97,8 +97,11 @@ def ols_inference(Y1, Y0, T0):
     @return counterfactual: counterfactual predicted by synthetic control
     @return tau: average treatment effect on test unit redicted by synthetic control
     """
+    if select_features:
+        select, max_score = feature_selection(Y1, Y0, T0) #get features from lasso
+    else:
+        select, max_score = np.array([True]*Y0.shape[1]), np.inf  #select everything
 
-    select, max_score = feature_selection(Y1, Y0, T0) #get features from lasso
     if select.size == 0: #if no controls, skip
         return None, None
     print(f"Final: {select}, {max_score}")
@@ -157,7 +160,7 @@ def format_data(O, Z):
 
   
 
-def synthetic_control(O, Z):
+def ols_synthetic_control(O, Z, select_features=False):
     """
     Run Synthetic Control for Observation Matrix and Intervention Matrix
 
@@ -174,7 +177,7 @@ def synthetic_control(O, Z):
     M = np.copy(O)
     for s in range(S):
         Y1_s = Y1[:,s].reshape((T,))
-        counterfactual_s, tau_s = ols_inference(Y1_s, Y0, T0)
+        counterfactual_s, tau_s = ols_inference(Y1_s, Y0, T0, select_features)
         tau += tau_s
         M[:, control_units[s]] = counterfactual_s
     
