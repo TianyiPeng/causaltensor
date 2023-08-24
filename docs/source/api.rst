@@ -58,15 +58,17 @@ We also implemented the panel regression with a hard rank constraint:
 .. math::
    \hat{M}, \hat{\tau} = \arg\min_{rank(M)\leq r} \sum_{ij} (O_{ij}-M_{ij}-\tau Z_{ij})^2
 
-This is a non-convex optimization problem and we used the alternate minimization between $M$ and $\tau$ for the optimization. The theoretical guarantee for this non-convex method is weaker than the convex method above (the convergence to the global optimum is not always guaranteed), but the practical performance is comparable (sometimes even better).  
+This is a non-convex optimization problem and we used the alternate minimization between `M` and `tau` for the optimization. The theoretical guarantee for this non-convex method is weaker than the convex method above (the convergence to the global optimum is not always guaranteed), but the practical performance is comparable (sometimes even better).  
 
 .. code-block:: python
+
    M, tau, std = DC_PR_auto_rank(O, Z, method='non-convex')
    M, tau, std = DC_PR_with_suggested_rank(O, Z, suggest_r = 2, method='non-convex')
 
 We also provide an option to select `convex` or `non-convex` panel regression in a data-driven fashion. This is recommended in practice.
 
 .. code-block:: python
+
    M, tau, std = DC_PR_auto_rank(O, Z, method='auto')
    M, tau, std = DC_PR_with_suggested_rank(O, Z, suggest_r = 2, method='auto')
 
