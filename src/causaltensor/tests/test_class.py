@@ -4,6 +4,11 @@ import pytest
 import sys
 sys.path.append('c:\\Users\\Arushi Jain\\Dropbox (MIT)\\RAship\\causaltensor')
 from src.causaltensor.cauest.OLSSyntheticControl import ols_synthetic_control
+from src.causaltensor.cauest.DID import DID
+from src.causaltensor.cauest.SDID import SDID
+from src.causaltensor.cauest.DebiasConvex import DC_PR_auto_rank
+from src.causaltensor.cauest.MCNNM import MC_NNM_with_cross_validation
+
 
 np.random.seed(0)
 
@@ -17,6 +22,22 @@ class TestClass:
         Z = np.zeros_like(O) # Z has the same shape as O
         Z[-1, 19:] = 1
         return O, Z
+    
+
+    def test_did(self, create_dataset):
+        O, Z = create_dataset
+        M, tau = DID(O, Z)
+        # TODO: Check for better assertions
+        assert M.shape == O.shape
+        assert tau <= -20 and tau >= -30
+
+
+    def test_sdid(self, create_dataset):
+        O, Z = create_dataset
+        tau = SDID(O, Z)
+        # TODO: Check for better assertions
+        assert tau <= -10 and tau >= -20
+
 
     def test_synthetic_control(self, create_dataset):
         O, Z = create_dataset
@@ -32,9 +53,27 @@ class TestClass:
         assert M.shape == O.T.shape
         assert tau <= -10 and tau >= -20
 
+    def test_dcpr_auto(self, create_dataset):
+        O, Z = create_dataset
+        M, tau, std = DC_PR_auto_rank(O, Z)
+        # TODO: Check for better assertions
+        assert M.shape == O.shape
+        assert tau <= -10 and tau >= -20
+
+    def test_mc(self, create_dataset):
+        O, Z = create_dataset
+        M, a, b, tau = MC_NNM_with_cross_validation(O, 1-Z)
+        # TODO: Check for better assertions
+        assert M.shape == O.shape
+        assert tau <= -15 and tau >= -25
+
+
+
 
 """
-Run the following in the terminal to test and get coverage report
-pytest --cov=.\src\causaltensor\cauest --cov-report=term-missing
+Run the following to run all test cases:
+    pytest
+Run the following in the terminal to test and get coverage report:
+    pytest --cov=.\src\causaltensor\cauest --cov-report=term-missing
 """
 
