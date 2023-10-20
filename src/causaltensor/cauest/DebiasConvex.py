@@ -1,5 +1,5 @@
 import numpy as np
-import src.causaltensor.matlib.util as util
+import causaltensor.matlib.util as util
 
 def debias(M, tau, Z, l):
     u, s, vh = util.svd_fast(M)

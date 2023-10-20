@@ -1,13 +1,10 @@
 import numpy as np
 import pytest
-# TODO: Fix Relative Imports
-import sys
-sys.path.append('c:\\Users\\Arushi Jain\\Dropbox (MIT)\\RAship\\causaltensor')
-from src.causaltensor.cauest.OLSSyntheticControl import ols_synthetic_control
-from src.causaltensor.cauest.DID import DID
-from src.causaltensor.cauest.SDID import SDID
-from src.causaltensor.cauest.DebiasConvex import DC_PR_auto_rank
-from src.causaltensor.cauest.MCNNM import MC_NNM_with_cross_validation
+from causaltensor.cauest.OLSSyntheticControl import ols_synthetic_control
+from causaltensor.cauest.DID import DID
+from causaltensor.cauest.SDID import SDID
+from causaltensor.cauest.DebiasConvex import DC_PR_auto_rank, DC_PR_with_suggested_rank
+from causaltensor.cauest.MCNNM import MC_NNM_with_cross_validation
 
 
 np.random.seed(0)
@@ -58,6 +55,15 @@ class TestClass:
         M, tau, std = DC_PR_auto_rank(O, Z)
         # TODO: Check for better assertions
         assert M.shape == O.shape
+        assert tau <= -10 and tau >= -20
+
+    def test_dcpr_rank(self, create_dataset):
+        O, Z = create_dataset
+        suggest_r = 2
+        M, tau, std = DC_PR_with_suggested_rank(O, Z, suggest_r)
+        # TODO: Check for better assertions
+        assert M.shape == O.shape
+        assert np.linalg.matrix_rank(M) == suggest_r
         assert tau <= -10 and tau >= -20
 
     def test_mc(self, create_dataset):
