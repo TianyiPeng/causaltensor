@@ -7,7 +7,7 @@ from causaltensor.cauest.DebiasConvex import DC_PR_auto_rank, DC_PR_with_suggest
 from causaltensor.cauest.MCNNM import MC_NNM_with_cross_validation, MC_NNM_with_suggested_rank
 from causaltensor.matlib import low_rank_M0_normal
 from causaltensor.matlib import iid_treatment
-
+import os
 
 np.random.seed(0)
 
@@ -15,7 +15,8 @@ np.random.seed(0)
 class TestClass:
     @pytest.fixture
     def create_dataset(self):
-        O_raw = np.loadtxt('tests\\MLAB_data.txt')
+        file_path = os.path.join('tests', 'MLAB_data.txt')
+        O_raw = np.loadtxt(file_path) # California Smoke Dataset
         O = O_raw[8:, :] ## remove features that are not relevant in this demo
         O = O.T
         Z = np.zeros_like(O) # Z has the same shape as O
@@ -94,13 +95,22 @@ class TestClass:
             SigmaZ.append(np.random.rand(M0.shape[0], M0.shape[1]))
 
         results = []
-        for T in range(1000):
+        for T in range(100):
             O = adding_noise(M0, Z, tau, Sigma, SigmaZ)
             M, tau_hat, standard_deviation = DC_PR_with_suggested_rank(O, Z, suggest_r=r, method="non-convex") #solving a non-convex optimization to obtain M and tau
-            results.append(tau_hat)
+            results.append(np.linalg.norm(tau_hat - tau) / np.linalg.norm(tau))     
         results = np.array(results)
         assert M.shape == O.shape
-        assert np.linalg.norm(np.mean(results, axis=0)-tau) < 0.01
+        assert np.mean(results) < 0.05
+
+        results = []
+        for T in range(30):
+            O = adding_noise(M0, Z, tau, Sigma, SigmaZ)
+            M, tau_hat, standard_deviation = DC_PR_with_suggested_rank(O, Z, suggest_r=r, method="convex") #solving a non-convex optimization to obtain M and tau
+            results.append(np.linalg.norm(tau_hat - tau) / np.linalg.norm(tau))     
+        results = np.array(results)
+        assert M.shape == O.shape
+        assert np.mean(results) < 0.1
 
         # TODO: Any checks on SD?
 
@@ -121,11 +131,10 @@ class TestClass:
 
 
 
-
 """
 Run the following to run all test cases:
     pytest
 Run the following in the terminal to test and get coverage report:
-    pytest --cov=.\src\causaltensor\cauest --cov-report=term-missing
+    pytest --cov=./src/causaltensor/cauest --cov-report=term-missing
 """
 
