@@ -1,5 +1,6 @@
 import numpy as np
-import causaltensor.matlib.util as util
+from causaltensor.matlib import util
+
 
 def debias(M, tau, Z, l):
     u, s, vh = util.svd_fast(M)
@@ -9,7 +10,23 @@ def debias(M, tau, Z, l):
 
     PTperpZ = np.zeros_like(Z)
     for k in np.arange(Z.shape[2]):
-        PTperpZ[:, :, k] = (np.eye(u.shape[0]) - u.dot(u.T)).dot(Z[:, :, k]).dot(np.eye(vh.shape[1]) - vh.T.dot(vh))
+        # We conduct some checks for extremely wide or extremely long matrices, which may result in OOM errors with
+        # naïve operation sequencing.  If BOTH dimensions are extremely large, there may still be an OOM error, but this
+        # case is quite rare.
+        treatment_matrix_shape = Z[:, :, k].shape
+        if max(treatment_matrix_shape) > 1e4:
+
+            if treatment_matrix_shape[0] > treatment_matrix_shape[1]:
+                first_factor = (Z[:, :, k] - u.dot(u.T.dot(Z[:, :, k])))
+                second_factor = np.eye(vh.shape[1]) - vh.T.dot(vh)
+            else:
+                first_factor = (np.eye(u.shape[0]) - u.dot(u.T))
+                second_factor = (Z[:, :, k].dot(vh.T)).dot(vh)
+
+            PTperpZ[:, :, k] = first_factor.dot(second_factor)
+
+        else:
+            PTperpZ[:, :, k] = (np.eye(u.shape[0]) - u.dot(u.T)).dot(Z[:, :, k]).dot(np.eye(vh.shape[1]) - vh.T.dot(vh))
 
     D = np.zeros((Z.shape[2], Z.shape[2]))
     for k in np.arange(Z.shape[2]):
@@ -19,12 +36,13 @@ def debias(M, tau, Z, l):
 
     Delta = np.array([l * np.sum(Z[:, :, k]*(u.dot(vh))) for k in range(Z.shape[2])]) 
 
-    tau_delta =  np.linalg.pinv(D) @ Delta
+    tau_delta = np.linalg.pinv(D) @ Delta
     tau_debias = tau - tau_delta
 
     PTZ = Z - PTperpZ
     M_debias = M + l * u.dot(vh) + np.sum(PTZ * tau_delta.reshape(1, 1, -1), axis=2)
     return M_debias, tau_debias
+
 
 def transform_Z(Z):
     """
