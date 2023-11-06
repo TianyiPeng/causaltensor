@@ -12,7 +12,7 @@ def svd_fast(M):
         is_swap = True
         M = M.T
 
-    A = M @ M.T
+    A = M @ M.T # this will speed up the calculation when M is asymmetric 
     u, ss, uh = np.linalg.svd(A, full_matrices=False)
     ss[ss < 1e-7] = 0
     s = np.sqrt(ss)
@@ -38,7 +38,6 @@ def SVD_soft(X, l):
     s_threshold = np.maximum(0,s-l)
     return (u * s_threshold).dot(vh)
     
-
 def L2_error(s, r):
     '''
         s: a vector
@@ -77,4 +76,15 @@ def convex_condition_test(M, Z, r):
     t2 = np.sum(PTperpZ**2)
     t3 = np.linalg.norm(PTperpZ, ord=2)
     return (t1*t3, t2)
-    
+
+
+def transform_to_3D(Z):
+    """
+        Z is a list of 2D numpy arrays or a single 2D/3D numpy array
+        convert Z to a 3D numpy array with the last dimension being the index of interventions
+    """
+    if isinstance(Z, list): #if Z is a list of numpy arrays
+        Z = np.stack(Z, axis = 2) 
+    elif Z.ndim == 2: #if a single Z
+        Z = Z.reshape(Z.shape[0], Z.shape[1], 1)
+    return Z.astype(float) 

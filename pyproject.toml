@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "causaltensor"
-version = "0.1.7"
+version = "0.1.8"
 description = "Package for causal inference in panels"
 readme = "README.md"
 authors = [{ name = "Tianyi Peng", email = "tianyipeng95@gmail.com"}]
@@ -18,14 +18,15 @@ classifiers = [
 ]
 keywords = ["causal", "inference", "panel", "matrix", "tensor"]
 dependencies = [
-    "numpy",
-    'importlib-metadata; python_version<"3.11"',
+    'numpy',
+    'importlib-metadata; python_version<"3.11"'
 ]
 
 requires-python = ">=3"
 
 [project.urls]
 Homepage = "https://github.com/TianyiPeng/causaltensor"
+
 
 [project.optional-dependencies]
 dev = ['cvxopt']

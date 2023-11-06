@@ -1,6 +1,6 @@
 import numpy as np
-from causaltensor.matlib import util
-
+import causaltensor.matlib.util as util
+from causaltensor.matlib.util import transform_to_3D
 
 def debias(M, tau, Z, l):
     u, s, vh = util.svd_fast(M)
@@ -44,16 +44,6 @@ def debias(M, tau, Z, l):
     return M_debias, tau_debias
 
 
-def transform_Z(Z):
-    """
-        convert Z to a 3-dimension numpy array with the last dimension being the index of interventions
-    """
-    if isinstance(Z, list): #if Z is a list of numpy arrays
-        Z = np.stack(Z, axis = 2) 
-    elif Z.ndim == 2: #if a single Z
-        Z = Z.reshape(Z.shape[0], Z.shape[1], 1)
-    return Z.astype(float)
-
 def prepare_OLS(Z):
     ### Select non-zero entries for OLS (optmizing sparsity of Zs)
     small_index = (np.sum(np.abs(Z) > 1e-9, axis=2) > 0)
@@ -86,7 +76,7 @@ def DC_PR_with_l(O, Z, l, initial_tau = None, eps = 1e-6):
         tau : (num_treat,) float numpy array
             Estimated treatment effects.
     """
-    Z = transform_Z(Z) ## Z is (n1 x n2 x num_treat) numpy array
+    Z = transform_to_3D(Z) ## Z is (n1 x n2 x num_treat) numpy array
     if initial_tau is None:
         tau = np.zeros(Z.shape[2])
     else:
@@ -130,7 +120,7 @@ def non_convex_PR(O, Z, r, initial_tau = None, eps = 1e-6):
         tau : (num_treat,) float numpy array
             Estimated treatment effects.
     """
-    Z = transform_Z(Z) ## Z is (n1 x n2 x num_treat) numpy array
+    Z = transform_to_3D(Z) ## Z is (n1 x n2 x num_treat) numpy array
     if initial_tau is None:
         tau = np.zeros(Z.shape[2])
     else:
@@ -164,7 +154,7 @@ def DC_PR_with_suggested_rank(O, Z, suggest_r = 1, method = 'convex'):
         :param Z: intervention matrix
     
     """
-    Z = transform_Z(Z) ## Z is (n1 x n2 x num_treat) numpy array
+    Z = transform_to_3D(Z) ## Z is (n1 x n2 x num_treat) numpy array
     ## determine pre_tau
     pre_tau = solve_tau(O, Z)
 
