@@ -2,6 +2,7 @@ import numpy as np
 import causaltensor.matlib.util as util
 from causaltensor.matlib.util import transform_to_3D
 
+
 def debias(M, tau, Z, l):
     u, s, vh = util.svd_fast(M)
     r = np.sum(s / np.cumsum(s) >= 1e-6)
@@ -10,23 +11,7 @@ def debias(M, tau, Z, l):
 
     PTperpZ = np.zeros_like(Z)
     for k in np.arange(Z.shape[2]):
-        # We conduct some checks for extremely wide or extremely long matrices, which may result in OOM errors with
-        # naïve operation sequencing.  If BOTH dimensions are extremely large, there may still be an OOM error, but this
-        # case is quite rare.
-        treatment_matrix_shape = Z[:, :, k].shape
-        if max(treatment_matrix_shape) > 1e4:
-
-            if treatment_matrix_shape[0] > treatment_matrix_shape[1]:
-                first_factor = (Z[:, :, k] - u.dot(u.T.dot(Z[:, :, k])))
-                second_factor = np.eye(vh.shape[1]) - vh.T.dot(vh)
-            else:
-                first_factor = (np.eye(u.shape[0]) - u.dot(u.T))
-                second_factor = (Z[:, :, k].dot(vh.T)).dot(vh)
-
-            PTperpZ[:, :, k] = first_factor.dot(second_factor)
-
-        else:
-            PTperpZ[:, :, k] = (np.eye(u.shape[0]) - u.dot(u.T)).dot(Z[:, :, k]).dot(np.eye(vh.shape[1]) - vh.T.dot(vh))
+        PTperpZ[:, :, k] = util.remove_tangent_space_component(u, vh, Z[:, :, k])
 
     D = np.zeros((Z.shape[2], Z.shape[2]))
     for k in np.arange(Z.shape[2]):
@@ -51,6 +36,7 @@ def prepare_OLS(Z):
     ## X.shape = (#non_zero entries of Zs, num_treat)
     Xinv = np.linalg.inv(X.T @ X)
     return small_index, X, Xinv
+
 
 def DC_PR_with_l(O, Z, l, initial_tau = None, eps = 1e-6):
     """
@@ -96,6 +82,7 @@ def DC_PR_with_l(O, Z, l, initial_tau = None, eps = 1e-6):
         tau = tau_new
     return M, tau
 
+
 def non_convex_PR(O, Z, r, initial_tau = None, eps = 1e-6):
     """
         Non-Convex Panel Regression with the rank r
@@ -140,11 +127,13 @@ def non_convex_PR(O, Z, r, initial_tau = None, eps = 1e-6):
         tau = tau_new
     return M, tau
 
+
 def solve_tau(O, Z):
     small_index, X, Xinv = prepare_OLS(Z)
     y = O[small_index] #select non-zero entries
     tau = Xinv @ (X.T @ y)
     return tau 
+
 
 def DC_PR_with_suggested_rank(O, Z, suggest_r = 1, method = 'convex'):
     """
@@ -192,6 +181,7 @@ def DC_PR_with_suggested_rank(O, Z, suggest_r = 1, method = 'convex'):
     else:
         return M, tau, standard_deviation
 
+
 def DC_PR_auto_rank(O, Z, spectrum_cut = 0.002, method='convex'):
     s = np.linalg.svd(O, full_matrices = False, compute_uv=False)
     suggest_r = np.sum(np.cumsum(s**2) / np.sum(s**2) <= 1-spectrum_cut)
@@ -205,6 +195,7 @@ def projection_T_orthogonal(Z, M):
     vh = vh[:r, :]
     PTperpZ = (np.eye(u.shape[0]) - u.dot(u.T)).dot(Z).dot(np.eye(vh.shape[1]) - vh.T.dot(vh))
     return PTperpZ
+
 
 def panel_regression_CI(M, Z, E):
     '''
@@ -228,7 +219,7 @@ def panel_regression_CI(M, Z, E):
 
     X = np.zeros((Z.shape[0]*Z.shape[1], Z.shape[2]))
     for k in np.arange(Z.shape[2]):
-        X[:, k] = (np.eye(u.shape[0]) - u.dot(u.T)).dot(Z[:, :, k]).dot(np.eye(vh.shape[1]) - vh.T.dot(vh)).reshape(-1)
+        X[:, k] = util.remove_tangent_space_component(u, vh, Z[:, :, k]).reshape(-1)
 
     A = (np.linalg.inv(X.T@X)@X.T) 
     CI = (A * np.reshape(E**2, -1)) @ A.T
