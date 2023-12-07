@@ -87,4 +87,30 @@ def transform_to_3D(Z):
         Z = np.stack(Z, axis = 2) 
     elif Z.ndim == 2: #if a single Z
         Z = Z.reshape(Z.shape[0], Z.shape[1], 1)
-    return Z.astype(float) 
+    return Z.astype(float)
+
+
+def remove_tangent_space_component(u, vh, Z):
+    """
+        Remove the projection of Z (a single treatment) onto the tangent space of M in memory-aware manner
+    """
+
+    # We conduct some checks for extremely wide or extremely long matrices, which may result in OOM errors with
+    # naïve operation sequencing.  If BOTH dimensions are extremely large, there may still be an OOM error, but this
+    # case is quite rare.
+    treatment_matrix_shape = Z.shape
+    if max(treatment_matrix_shape) > 1e4:
+
+        if treatment_matrix_shape[0] > treatment_matrix_shape[1]:
+            first_factor = (Z - u.dot(u.T.dot(Z)))
+            second_factor = np.eye(vh.shape[1]) - vh.T.dot(vh)
+        else:
+            first_factor = (np.eye(u.shape[0]) - u.dot(u.T))
+            second_factor = (Z.dot(vh.T)).dot(vh)
+
+        PTperpZ = first_factor.dot(second_factor)
+
+    else:
+        PTperpZ = (np.eye(u.shape[0]) - u.dot(u.T)).dot(Z).dot(np.eye(vh.shape[1]) - vh.T.dot(vh))
+
+    return PTperpZ
