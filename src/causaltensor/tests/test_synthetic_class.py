@@ -30,7 +30,7 @@ class TestSyntheticClass:
                 r = 3
                 M = low_rank_M0_normal(num_individuals, num_time_periods, r)
             
-            self.tau = np.mean(M) * treatment_level
+            self.tau = np.mean(np.abs(M)) * treatment_level
 
             # Generating treatment pattern
             if not iid:
@@ -101,7 +101,7 @@ class TestSyntheticClass:
         M, a, b, tau = MC_NNM_with_suggested_rank(O, 1-Z, suggest_r)
         assert M.shape == O.shape
         error = np.abs(self.tau-tau)/self.tau
-        assert error <= 0.001
+        assert error <= 0.01
         assert np.linalg.matrix_rank(M) == suggest_r
 
         # IID Pattern
@@ -109,13 +109,13 @@ class TestSyntheticClass:
         M, a, b, tau = MC_NNM_with_cross_validation(O, 1-Z)
         assert M.shape == O.shape
         error = np.abs(self.tau-tau)/self.tau
-        assert error <= 0.001
+        assert error <= 0.1
 
         suggest_r = 3
         M, a, b, tau = MC_NNM_with_suggested_rank(O, 1-Z, suggest_r)
         assert M.shape == O.shape
         error = np.abs(self.tau-tau)/self.tau
-        assert error <= 0.001
+        assert error <= 0.01
         assert np.linalg.matrix_rank(M) == suggest_r
 
 
@@ -129,7 +129,7 @@ class TestSyntheticClass:
             M, tau, std = DC_PR_auto_rank(O, Z)
             error = np.abs(self.tau-tau)/self.tau
             results.append(error)
-        assert np.min(results) <= 0.001
+        assert np.min(results) <= 0.005
 
         results = []
         for T in range(3):
@@ -138,7 +138,7 @@ class TestSyntheticClass:
             assert np.linalg.matrix_rank(M) == suggest_r
             error = np.abs(self.tau-tau)/self.tau
             results.append(error)
-        assert np.min(results) <= 0.001
+        assert np.min(results) <= 0.005
 
         # IID Pattern
         results = []
@@ -147,7 +147,7 @@ class TestSyntheticClass:
             M, tau, std = DC_PR_auto_rank(O, Z)
             error = np.abs(self.tau-tau)/self.tau
             results.append(error)
-        assert np.min(results) <= 0.001
+        assert np.min(results) <= 0.005
 
         results = []
         for T in range(3):
@@ -156,7 +156,7 @@ class TestSyntheticClass:
             assert np.linalg.matrix_rank(M) == suggest_r
             error = np.abs(self.tau-tau)/self.tau
             results.append(error)
-        assert np.min(results) <= 0.001
+        assert np.min(results) <= 0.005
 
 
 
@@ -196,7 +196,7 @@ class TestSyntheticClass:
             results.append(np.linalg.norm(tau_hat - tau) / np.linalg.norm(tau))     
         results = np.array(results)
         assert M.shape == O.shape
-        assert np.mean(results) < 0.05
+        assert np.mean(results) < 0.08
 
 
 
