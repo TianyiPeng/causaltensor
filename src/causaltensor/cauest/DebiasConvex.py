@@ -161,7 +161,7 @@ def DC_PR_with_suggested_rank(O, Z, suggest_r = 1, method = 'convex'):
                 M_debias, tau_debias = debias(pre_M, pre_tau, Z, l*coef)
                 M = util.SVD(M_debias, suggest_r)
                 tau = tau_debias 
-                break 
+                break
             pre_M = M
             pre_tau = tau
             l = l / coef

@@ -106,7 +106,7 @@ def remove_tangent_space_component(u, vh, Z):
             second_factor = np.eye(vh.shape[1]) - vh.T.dot(vh)
         else:
             first_factor = (np.eye(u.shape[0]) - u.dot(u.T))
-            second_factor = (Z.dot(vh.T)).dot(vh)
+            second_factor = Z - (Z.dot(vh.T)).dot(vh)
 
         PTperpZ = first_factor.dot(second_factor)
 
