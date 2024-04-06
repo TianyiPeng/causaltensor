@@ -23,15 +23,15 @@ class OLSSCPanelSolver(PanelSolver):
         @return M: the baseline matrix 
         @return tau: the treatment effect
         """
-        self.T0, self.Y0, self.Y1, self.control_units = self.preprocess(X, Z)
+        self.X = X
+        self.T0, self.Y0, self.Y1, self.control_units = self.preprocess(Z)
         self.select_features = select_features
 
 
-    def preprocess(self, O, Z):
+    def preprocess(self, Z):
         """
         Split the observation matrix into Y0, Y1 and T0
 
-        @param O: T x N matrix to be regressed
         @param Z: T x N intervention matrix of 0s and 1s
 
         @return T0: number of pre-intervention (baseline) time periods 
@@ -41,8 +41,8 @@ class OLSSCPanelSolver(PanelSolver):
         """
         N = Z.shape[1]
         control_units = np.where(np.all(Z == 0, axis=0))[0]
-        Y0 = O[:, control_units]
-        Y1 = O[:, ~np.isin(np.arange(N), control_units)]
+        Y0 = self.X[:, control_units]
+        Y1 = self.X[:, ~np.isin(np.arange(N), control_units)]
         T0 = np.where(Z.any(axis=1))[0][0]
         return T0, Y0, Y1, control_units
     
@@ -173,10 +173,10 @@ class OLSSCPanelSolver(PanelSolver):
 
     
 
-    def fit(self, O):
+    def fit(self):
         T, S = self.Y1.shape
         tau = 0
-        M = np.copy(O)
+        M = np.copy(self.O)
         for s in range(S):
             Y1_s = self.Y1[:,s].reshape((T,))
             counterfactual_s, tau_s = self.ols_inference(Y1_s)
@@ -196,5 +196,5 @@ class OLSSCPanelSolver(PanelSolver):
 
 def ols_synthetic_control(O, Z, select_features=False):
     solver = OLSSCPanelSolver(O, Z, select_features)
-    res = solver.fit(O)
+    res = solver.fit()
     return res.M, res.tau
