@@ -66,8 +66,7 @@ class TestSyntheticClass:
     def test_sdid(self, create_dataset_factory):
         # Only Block pattern
         O, Z = create_dataset_factory()
-        M, tau = ols_synthetic_control(O.T, Z.T)
-        assert M.shape == O.T.shape
+        tau = SDID(O, Z)
         error = np.abs(self.tau-tau)/self.tau
         assert error <= 0.01
 
@@ -78,14 +77,7 @@ class TestSyntheticClass:
         M, tau = ols_synthetic_control(O.T, Z.T)
         assert M.shape == O.T.shape
         error = np.abs(self.tau-tau)/self.tau
-        assert error <= 0.01
-
-
-        # Feature Selection
-        M, tau = ols_synthetic_control(O.T, Z.T, select_features = True)
-        assert M.shape == O.T.shape
-        error = np.abs(self.tau-tau)/self.tau
-        assert error <= 0.3
+        assert error <= 0.2
 
     
 

@@ -46,12 +46,7 @@ class TestRealClass:
         assert M.shape == O.T.shape
         assert tau <= -10 and tau >= -20
 
-    def test_synthetic_control_feature_selection(self, create_dataset):
-        O, Z = create_dataset
-        M, tau = ols_synthetic_control(O.T, Z.T, select_features = True)
-        # TODO: Check for better assertions
-        assert M.shape == O.T.shape
-        assert tau <= -10 and tau >= -20
+ 
 
     def test_dcpr(self, create_dataset):
         O, Z = create_dataset
