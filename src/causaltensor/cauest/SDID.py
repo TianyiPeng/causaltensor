@@ -33,11 +33,13 @@ class SDIDPanelSolver(PanelSolver):
             the average treatment effect estimated by [1] 
         '''
         super().__init__(Z)
+        if self.Z.shape[2] == 1:
+            self.Z = self.Z.reshape(self.Z.shape[0], self.Z.shape[1])
         self.X = O 
         self.treat_units = treat_units
         self.starting_time = starting_time
         if (starting_time == -1):
-            treat_units, starting_time = self.SDID_preprocess()
+            self.SDID_preprocess()
 
     def SDID_preprocess(self):
         n1, n2 = self.X.shape
@@ -94,7 +96,7 @@ class SDIDPanelSolver(PanelSolver):
         #print("A solution w is")
         #print(w.value)
 
-        w_sdid = np.zeros(O.shape[0]) 
+        w_sdid = np.zeros(self.X.shape[0]) 
         w_sdid[self.donor_units] = w.value
         w_sdid[self.treat_units] = 1.0 / Ntr
 
@@ -132,7 +134,7 @@ class SDIDPanelSolver(PanelSolver):
         n1 = self.X.shape[0]
         n2 = self.X.shape[1]
 
-        weights = w_sdid.reshape((O.shape[0], 1)) @ l_sdid.reshape((1, self.X.shape[1]))
+        weights = w_sdid.reshape((self.X.shape[0], 1)) @ l_sdid.reshape((1, self.X.shape[1]))
 
         a = np.zeros((n1, 1))
         b = np.zeros((n2, 1))
@@ -151,9 +153,9 @@ class SDIDPanelSolver(PanelSolver):
             a = a_new
             b = b_new
             M = a.dot(one_row)+one_col.dot(b.T)
-            tau = np.sum(self.Z*(self.X-M)*weights)/np.sum(Z*weights)
+            tau = np.sum(self.Z*(self.X-M)*weights)/np.sum(self.Z*weights)
 
-        res = SDIDResult(M = M, tau = tau)
+        res = SDIDResult(baseline = M, tau = tau)
         return res
     
 # backward compatibility
@@ -161,5 +163,6 @@ def SDID(O, Z, treat_units = [-1], starting_time = -1):
     solver = SDIDPanelSolver(Z, O, treat_units, starting_time)
     res = solver.fit()
     return res.tau
+
 
     

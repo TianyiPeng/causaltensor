@@ -44,7 +44,7 @@ class DCPanelSolver(PanelSolver):
             M, tau, std = self.DC_PR_auto_rank(spectrum_cut=spectrum_cut, method=method)
         else:
             M, tau, std = self.DC_PR_with_suggested_rank(suggest_r=suggest_r, method=method)
-        res = DCResult(M=M, tau=tau, std=std)
+        res = DCResult(baseline=M, tau=tau, std=std)
         return res
 
     def solve_tau(self, O):
@@ -52,7 +52,7 @@ class DCPanelSolver(PanelSolver):
         tau = self.Xinv @ (self.X.T @ y)
         return tau 
 
-    def als(self, eps, l=None, r=None):
+    def als(self, tau, eps, l=None, r=None):
         for T in range(2000):
             #### SVD to find low-rank M
             if l:
@@ -79,13 +79,13 @@ class DCPanelSolver(PanelSolver):
         for k in np.arange(self.Z.shape[2]):
             PTperpZ[:, :, k] = util.remove_tangent_space_component(u, vh, self.Z[:, :, k])
 
-        D = np.zeros((self.Z.shape[2], Z.shape[2]))
+        D = np.zeros((self.Z.shape[2], self.Z.shape[2]))
         for k in np.arange(self.Z.shape[2]):
             for m in np.arange(k, self.Z.shape[2]):
                 D[k, m] = np.sum(PTperpZ[:, :, k] * PTperpZ[:, :, m])
                 D[m, k] = D[k, m]
 
-        Delta = np.array([l * np.sum(self.Z[:, :, k]*(u.dot(vh))) for k in range(Z.shape[2])]) 
+        Delta = np.array([l * np.sum(self.Z[:, :, k]*(u.dot(vh))) for k in range(self.Z.shape[2])]) 
 
         tau_delta = np.linalg.pinv(D) @ Delta
         tau_debias = tau - tau_delta
@@ -127,7 +127,7 @@ class DCPanelSolver(PanelSolver):
         else:
             tau = initial_tau
 
-        M, tau = self.als(eps, l=l)
+        M, tau = self.als(tau, eps, l=l)
         return M, tau
     
 
@@ -156,7 +156,7 @@ class DCPanelSolver(PanelSolver):
         else:
             tau = initial_tau
 
-        M, tau = self.als(eps, r=r)
+        M, tau = self.als(tau, eps, r=r)
         return M, tau
 
 
