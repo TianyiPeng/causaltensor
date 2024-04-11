@@ -6,24 +6,24 @@ from causaltensor.cauest.result import Result
 
 
 class OLSSCResult(Result):
-    def __init__(self, baseline = None, tau=None, p_value=None, beta=None, return_tau_scalar=False):
+    def __init__(self, baseline = None, tau=None, beta=None, return_tau_scalar=False, individual_te=None):
         super().__init__(baseline = baseline, tau = tau, return_tau_scalar = return_tau_scalar)
         self.beta = beta
         self.M = baseline # the counterfactual
-        self.p_value = p_value
+        self.individual_te = individual_te
 
 
 class OLSSCPanelSolver(PanelSolver):
-    def __init__(self, X, Z):
+    def __init__(self, X, Z, pval=False):
         """
         @param X: T x N matrix to be regressed
         @param Z: T x N intervention matrix of 0s and 1s
         """
         self.X = X
         self.T0, self.Y0, self.Y1, self.control_units, self.treatment_units = self.preprocess(Z)
-        print(self.T0)
-        print(self.control_units)
-        print(self.treatment_units)
+        self.individual_te = np.zeros(len(self.treatment_units)) 
+        self.pval = pval
+   
 
 
     def preprocess(self, Z):
@@ -47,7 +47,7 @@ class OLSSCPanelSolver(PanelSolver):
     
 
     
-    def ols_inference(self, Y1):
+    def ols_inference(self, Y1, Y0):
         """
         given some treatment outcome data as well as some control outcome data,
         create a synthetic control and estimate the average treatment effect of the intervention
@@ -60,7 +60,7 @@ class OLSSCPanelSolver(PanelSolver):
         def loss_w(W, X, y):
             return np.sqrt(np.mean((y - X.dot(W))**2))
         
-        X = self.Y0[:self.T0] # control units in pre-intervention
+        X = Y0[:self.T0] # control units in pre-intervention
         y = Y1[:self.T0] # treatment unit in pre-intervention        
         w_start = [1/X.shape[1]]*X.shape[1] # weights for each control units in synthetic control
 
@@ -70,7 +70,7 @@ class OLSSCPanelSolver(PanelSolver):
                             bounds=[(0.0, 1.0)]*len(w_start),
                             disp=False)
         
-        M = self.Y0 @ weights
+        M = Y0 @ weights
         tau = np.mean((Y1-M)[self.T0:])
         return M, tau
         
@@ -79,15 +79,46 @@ class OLSSCPanelSolver(PanelSolver):
         T = len(self.Y1)
         tau = 0
         M = np.copy(self.X)
+        self.individual_te = []
         for i, s in enumerate(self.treatment_units):
             Y1_s = self.Y1[:,i].reshape((T,))
-            counterfactual_s, tau_s = self.ols_inference(Y1_s)
+            counterfactual_s, tau_s = self.ols_inference(Y1_s, self.Y0)
             tau += tau_s
             M[:, s] = counterfactual_s
+            self.individual_te.append([s, tau_s])
         
         tau /= len(self.treatment_units)  
-        res = OLSSCResult(baseline = M, tau = tau)
+        
+        if self.pval:
+            self.individual_te = self.permutation_test()
+
+        res = OLSSCResult(baseline = M, tau = tau, individual_te=self.individual_te)
+
+        
         return res
+    
+
+    def permutation_test(self):
+        T = len(self.Y1)
+        individual_te_control = []
+        for i, cu in enumerate(self.control_units):
+            Y1_s = self.Y0[:,i].reshape((T,))
+            # create a synthetic control for eahc control unit using other control units
+            _, tau_s = self.ols_inference(Y1_s, np.hstack((self.Y0[:, :i], self.Y0[:, i+1:]))) 
+            individual_te_control.append([cu, tau_s])
+        # rank treatment effects for both treatment and control units based on magnitude of tretament effect
+        sorted_te = sorted(self.individual_te + individual_te_control, key=lambda x: abs(x[1]), reverse=True)
+        n = len(sorted_te)
+        p_values = []
+        # compute the probability of seeing treatment effects as extreme as current
+        for i, unit_te in enumerate(sorted_te):
+            if unit_te[0] in set(self.treatment_units):
+                p_values.append(unit_te+[round((i+1)/n, 4)])
+        p_values = sorted(p_values, key=lambda x: x[0])
+        return p_values
+
+
+            
 
 
 
@@ -100,3 +131,5 @@ def ols_synthetic_control(O, Z):
     solver = OLSSCPanelSolver(O, Z)
     res = solver.fit()
     return res.M, res.tau
+
+
