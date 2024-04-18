@@ -39,7 +39,7 @@ class DCPanelSolver(PanelSolver):
         return small_index, X, Xinv
       
 
-    def fit(self, auto_rank = True, suggest_r = 1, spectrum_cut = 0.002, method='convex'):
+    def fit(self, auto_rank = True, suggest_r = 1, spectrum_cut = 0.002, method='non-convex'):
         if auto_rank:
             M, tau, std = self.DC_PR_auto_rank(spectrum_cut=spectrum_cut, method=method)
         else:
@@ -160,7 +160,7 @@ class DCPanelSolver(PanelSolver):
         return M, tau
 
 
-    def DC_PR_with_suggested_rank(self, suggest_r = 1, method = 'convex'):
+    def DC_PR_with_suggested_rank(self, suggest_r = 1, method = 'non-convex'):
         """
             De-biased Convex Panel Regression with the suggested rank. Gradually decrease the nuclear-norm regularizer l until the rank of the next-iterated estimator exceeds r.
         
@@ -206,7 +206,7 @@ class DCPanelSolver(PanelSolver):
             return M, tau, standard_deviation
 
 
-    def DC_PR_auto_rank(self, spectrum_cut = 0.002, method='convex'):
+    def DC_PR_auto_rank(self, spectrum_cut = 0.002, method='non-convex'):
         s = np.linalg.svd(self.O, full_matrices = False, compute_uv=False)
         suggest_r = np.sum(np.cumsum(s**2) / np.sum(s**2) <= 1-spectrum_cut)
         return self.DC_PR_with_suggested_rank(suggest_r = suggest_r, method=method)
@@ -243,12 +243,12 @@ class DCPanelSolver(PanelSolver):
 
 
 # backward compatibility
-def DC_PR_auto_rank(O, Z, spectrum_cut = 0.002, method='convex'):
+def DC_PR_auto_rank(O, Z, spectrum_cut = 0.002, method='non-convex'):
     solver = DCPanelSolver(Z, O)
     res = solver.fit(spectrum_cut=spectrum_cut, method=method)
     return res.M, res.tau, res.std
 
-def DC_PR_with_suggested_rank(O, Z, suggest_r = 1, method = 'convex'):
+def DC_PR_with_suggested_rank(O, Z, suggest_r = 1, method = 'non-convex'):
     solver = DCPanelSolver(Z, O)
     res = solver.fit(auto_rank=False, suggest_r=suggest_r, method=method)
     return res.M, res.tau, res.std

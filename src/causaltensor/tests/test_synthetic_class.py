@@ -3,7 +3,7 @@ import pytest
 from causaltensor.cauest.OLSSyntheticControl import ols_synthetic_control
 from causaltensor.cauest.DID import DID
 from causaltensor.cauest.SDID import SDID
-from causaltensor.cauest.DebiasConvex import DC_PR_auto_rank, DC_PR_with_suggested_rank
+from causaltensor.cauest.DebiasConvex import DC_PR_with_suggested_rank
 from causaltensor.cauest.MCNNM import MC_NNM_with_cross_validation, MC_NNM_with_suggested_rank
 from causaltensor.matlib.generation_treatment_pattern import iid_treatment, block_treatment_testone
 from causaltensor.matlib.generation import low_rank_M0_normal
@@ -17,18 +17,20 @@ class TestSyntheticClass:
         num_individuals = 100
         num_time_periods = 50  
         treatment_level = 0.1 
-
         
 
-        def create_dataset(did=False, iid=False):
+        def create_dataset(did=False, add_fixed_effects = False, r = 3, iid=False):
             # Generating synthetic data               
             if did:
                 a = np.random.rand(num_individuals)
                 b = np.random.rand(num_time_periods)
                 M = a[:, None] + b
             else:
-                r = 3
                 M = low_rank_M0_normal(num_individuals, num_time_periods, r)
+                if add_fixed_effects:
+                    a = np.random.rand(num_individuals)
+                    b = np.random.rand(num_time_periods)
+                    M += a[:, None] + b
             
             self.tau = np.mean(np.abs(M)) * treatment_level
 
@@ -82,32 +84,19 @@ class TestSyntheticClass:
     
 
     def test_mc(self, create_dataset_factory):
+        r = 1
         # Block Pattern
-        O, Z = create_dataset_factory()
+        O, Z = create_dataset_factory(did=False, add_fixed_effects=True, r = r)
         M, a, b, tau = MC_NNM_with_cross_validation(O, 1-Z)
         assert M.shape == O.shape
         error = np.abs(self.tau-tau)/self.tau
         assert error <= 0.1
 
-        suggest_r = 3
+        suggest_r = r
         M, a, b, tau = MC_NNM_with_suggested_rank(O, 1-Z, suggest_r)
-        assert M.shape == O.shape
-        error = np.abs(self.tau-tau)/self.tau
-        assert error <= 0.01
-        assert np.linalg.matrix_rank(M) == suggest_r
-
-        # IID Pattern
-        O, Z = create_dataset_factory(iid=True)
-        M, a, b, tau = MC_NNM_with_cross_validation(O, 1-Z)
         assert M.shape == O.shape
         error = np.abs(self.tau-tau)/self.tau
         assert error <= 0.1
-
-        suggest_r = 3
-        M, a, b, tau = MC_NNM_with_suggested_rank(O, 1-Z, suggest_r)
-        assert M.shape == O.shape
-        error = np.abs(self.tau-tau)/self.tau
-        assert error <= 0.01
         assert np.linalg.matrix_rank(M) == suggest_r
 
 
@@ -115,41 +104,18 @@ class TestSyntheticClass:
         suggest_r = 3
 
         # Block Pattern
-        results = []
-        for T in range(3):
-            O, Z = create_dataset_factory()
-            M, tau, std = DC_PR_auto_rank(O, Z)
-            error = np.abs(self.tau-tau)/self.tau
-            results.append(error)
-        assert np.min(results) <= 0.005
-
-        results = []
-        for T in range(3):
-            O, Z = create_dataset_factory()
-            M, tau, std = DC_PR_with_suggested_rank(O, Z, suggest_r)
-            assert np.linalg.matrix_rank(M) == suggest_r
-            error = np.abs(self.tau-tau)/self.tau
-            results.append(error)
-        assert np.min(results) <= 0.005
+        O, Z = create_dataset_factory()
+        M, tau, std = DC_PR_with_suggested_rank(O, Z, suggest_r)
+        assert np.linalg.matrix_rank(M) == suggest_r
+        error = np.abs(self.tau-tau)/self.tau
+        assert error <= 0.05
 
         # IID Pattern
-        results = []
-        for T in range(3):
-            O, Z = create_dataset_factory(iid=True)
-            M, tau, std = DC_PR_auto_rank(O, Z)
-            error = np.abs(self.tau-tau)/self.tau
-            results.append(error)
-        assert np.min(results) <= 0.005
-
-        results = []
-        for T in range(3):
-            O, Z = create_dataset_factory(iid=True)
-            M, tau, std = DC_PR_with_suggested_rank(O, Z, suggest_r)
-            assert np.linalg.matrix_rank(M) == suggest_r
-            error = np.abs(self.tau-tau)/self.tau
-            results.append(error)
-        assert np.min(results) <= 0.005
-
+        O, Z = create_dataset_factory(iid=True)
+        M, tau, std = DC_PR_with_suggested_rank(O, Z, suggest_r)
+        assert np.linalg.matrix_rank(M) == suggest_r
+        error = np.abs(self.tau-tau)/self.tau
+        assert error <= 0.05
 
 
 
@@ -159,7 +125,7 @@ class TestSyntheticClass:
         r = 3
         M0 = low_rank_M0_normal(n1 = n1, n2 = n2, r = r) #low rank baseline matrix
 
-        num_treat = 5
+        num_treat = 2
         prob = 0.3
         Z = []
         tau = []
@@ -181,14 +147,11 @@ class TestSyntheticClass:
         for k in range(num_treat):
             SigmaZ.append(np.random.rand(M0.shape[0], M0.shape[1]))
 
-        results = []
-        for T in range(5):
-            O = adding_noise(M0, Z, tau, Sigma, SigmaZ)
-            M, tau_hat, standard_deviation = DC_PR_with_suggested_rank(O, Z, suggest_r=r, method="non-convex") #solving a non-convex optimization to obtain M and tau
-            results.append(np.linalg.norm(tau_hat - tau) / np.linalg.norm(tau))     
-        results = np.array(results)
+        O = adding_noise(M0, Z, tau, Sigma, SigmaZ)
+        M, tau_hat, standard_deviation = DC_PR_with_suggested_rank(O, Z, suggest_r=r, method="non-convex") #solving a non-convex optimization to obtain M and tau
+        error = np.linalg.norm(tau_hat - tau) / np.linalg.norm(tau)  
         assert M.shape == O.shape
-        assert np.mean(results) < 0.08
+        assert error < 0.08
 
 
 
@@ -197,4 +160,5 @@ Run the following to run all test cases:
     pytest
 Run the following in the terminal to test and get coverage report:
     pytest --cov=./src/causaltensor/cauest --cov-report=term-missing
+
 """

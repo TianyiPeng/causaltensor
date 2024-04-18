@@ -59,10 +59,12 @@ class MCNNMPanelSolver(PanelSolver):
         Z: 2D bool numpy array
             The treatment matrix.
             TODO: support multiple treatments for matrix completion algorithm
+            TODO: support non-binary treatment matrix
         X: 3D float numpy array (n,m,p) or 2D float numpy array (n,m) or a list of 2D float numpy array
             The covariates matrix. The last dimension is the index of covariates.
         Omega: 2D bool numpy array (n,m)
             Indicator matrix (1: observed, 0: missing).
+            The indicator matrix includes both the treated entries and untreated entries.
         fixed_effects: ['two-way']
             two-way fixed effects or one-way fixed effects (to be implemented)
         """
@@ -70,7 +72,7 @@ class MCNNMPanelSolver(PanelSolver):
             Omega = np.ones_like(Z[:, :], dtype=bool)
         Omega = Omega.astype(bool)
         if np.sum(Z==1) + np.sum(Z == 0) != Z.shape[0]*Z.shape[1]:
-            raise ValueError('Z should only consiste of 0/1 in matrix completion solver') 
+            raise ValueError('Z should only consist of 0/1 in matrix completion solver') 
         Z = Z.astype(bool)
         self.raw_Omega = Omega
         self.Z = (Z & Omega) # we only care the treatment matrix for observed entries 
@@ -141,10 +143,11 @@ class MCNNMPanelSolver(PanelSolver):
 
         res = self.solve_with_regularizer(O=O, l=l)
         l = l / coef
-        while (True):
+        T = 2000
+        for i in range(T):
             res_new = self.solve_with_regularizer(O=O, l=l, M_init=res.M)
-            if (np.linalg.matrix_rank(res_new.M) >= suggest_r):
-                return res_new
+            if (np.linalg.matrix_rank(res_new.M) > suggest_r): # we hope to minimize the l while keeping the rank of M to be suggest_r
+                return res
             res = res_new
             l = l / coef
 
@@ -153,32 +156,32 @@ class MCNNMPanelSolver(PanelSolver):
         Implement the K-fold cross validation in https://arxiv.org/pdf/1710.10251.pdf
         """
         np.random.seed(42) #for reproducibility
-        Omega = self.Omega
+        raw_Omega = self.raw_Omega
         def MSE_validate(res, valid_Ω):
             return np.sum((valid_Ω)*((O-res.baseline)**2)) / np.sum(valid_Ω)
             
         #K-fold cross validation
         train_list = []
         valid_list = []
-        p = np.sum(Omega) / np.size(Omega)
+        p = np.sum(self.Omega) / np.size(raw_Omega) # due to the treatment, the ratio of the missing entries
         for k in range(K):
             select = np.random.rand(O.shape[0], O.shape[1]) <= p
-            train_list.append(Omega * select)
-            valid_list.append(Omega * (1 - select)) 
+            train_list.append(raw_Omega * select)
+            valid_list.append(raw_Omega * (1 - select)) 
 
         if (len(list_l) == 0):# auto-selection of a list of regularization parameters
-            _, s, _ = np.linalg.svd(O*Omega, full_matrices = False)
+            _, s, _ = np.linalg.svd(O*self.Omega, full_matrices = False)
             l = s[1] #large enough regularization parameter
             for i in range(5):
                 list_l.append(l)
-                l /= 1.5       
+                l /= 2    
 
         error = np.ones((K, len(list_l))) * np.inf
         for k in range(K):
             #print(np.sum(self.Omega * (1-self.Z)))
             #print(np.sum((train_list[k]&self.Omega) * (1-self.Z)))
 
-            solver = MCNNMPanelSolver(Z = self.Z, X=self.X, Omega=(train_list[k]&self.Omega), fixed_effects=self.fixed_effects)
+            solver = MCNNMPanelSolver(Z = self.Z, X=self.X, Omega=train_list[k], fixed_effects=self.fixed_effects)
             
             M = None
             for i, l in enumerate(list_l):
@@ -186,7 +189,6 @@ class MCNNMPanelSolver(PanelSolver):
                 #import IPython; IPython.embed() 
                 error[k, i] = MSE_validate(res, valid_list[k])
                 M =res.M
-                #print('rank of M is ', np.linalg.matrix_rank(M))
         index = error.sum(axis=0).argmin()
         l_opt = list_l[index]
         res = self.solve_with_regularizer(O=O, l=l_opt)
