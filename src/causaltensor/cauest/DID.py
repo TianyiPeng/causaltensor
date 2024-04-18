@@ -1,50 +1,43 @@
 import numpy as np
+from causaltensor.cauest.result import Result
+from causaltensor.cauest.panel_solver import PanelSolver
+from causaltensor.cauest.panel_solver import FixedEffectPanelSolver
 
-def DID(O, Z, tau_star = 0, output_var=False):
-    n1 = O.shape[0]
-    n2 = O.shape[1]
+class DIDResult(Result):
+    def __init__(self, baseline = None, tau=None, beta=None, row_fixed_effects=None, column_fixed_effects=None, return_tau_scalar=False):
+        super().__init__(baseline = baseline, tau = tau, return_tau_scalar = return_tau_scalar)
+        self.beta = beta
+        self.row_fixed_effects = row_fixed_effects
+        self.column_fixed_effects = column_fixed_effects
+        self.M = baseline # for backward compatability
+class DIDPanelSolver(PanelSolver):
+    def __init__(self, Z=None, X=None, Omega=None, fixed_effects='two-way', **kwargs):
+        super().__init__(Z)
+        self.X = X
+        self.Omega = Omega
+        self.fixed_effects = fixed_effects
+        if fixed_effects != 'two-way':
+            raise NotImplementedError('Only two-way fixed effects are implemented.')
+        if X is None:
+            new_X = self.Z
+        else:
+            new_X = np.concatenate([self.Z, X], axis=2)
+        self.fixed_effects_solver = FixedEffectPanelSolver(X = new_X, Omega=Omega, fixed_effects=fixed_effects, **kwargs)
 
-    a = np.zeros((n1, 1))
-    b = np.zeros((n2, 1))
-    tau = tau_star
+    def fit(self, O):
+        res_fe = self.fixed_effects_solver.fit(O)
+        k = self.Z.shape[0]
+        tau = res_fe.beta[:k]
+        beta = res_fe.beta[k:] if self.X is not None else None
+        res = DIDResult(baseline = res_fe.fitted_value, tau = tau, beta = beta, 
+                        row_fixed_effects = res_fe.row_fixed_effects, 
+                        column_fixed_effects = res_fe.column_fixed_effects,
+                        return_tau_scalar = self.return_tau_scalar)
+        return res
 
-    one_row = np.ones((1, n2))
-    one_col = np.ones((n1, 1))
-    for T1 in range(2000):
-        a_new = np.mean(O-tau*Z-one_col.dot(b.T), axis=1).reshape((n1, 1))
-        b_new = np.mean(O-tau*Z-a.dot(one_row), axis=0).reshape((n2, 1))
-        if (np.sum((b_new - b)**2) < 1e-7 * np.sum(b**2) and np.sum((a_new - a)**2) < 1e-7 * np.sum(a**2)):
-            break
-        a = a_new
-        b = b_new
-        M = a.dot(one_row)+one_col.dot(b.T)
-        tau = np.sum(Z*(O-M))/np.sum(Z)
-
-    return M, tau
-
-def DID_with_missing_entries(O, Omega, Z, tau_star = 0, debug=False):
-    n1 = O.shape[0]
-    n2 = O.shape[1]
-
-    a = np.zeros((n1, 1))
-    b = np.zeros((n2, 1))
-    tau = tau_star
-
-    one_row = np.ones((1, n2))
-    one_col = np.ones((n1, 1))
-    M = a.dot(one_row)+one_col.dot(b.T)
-
-    for T1 in range(2000):
-        a_new = np.sum(Omega*(O-tau*Z-one_col.dot(b.T)), axis=1).reshape((n1, 1)) / np.sum(Omega, axis=1).reshape((n1, 1))
-        b_new = np.sum(Omega*(O-tau*Z-a_new.dot(one_row)), axis=0).reshape((n2, 1)) / np.sum(Omega, axis=0).reshape((n2, 1))
-
-        if (np.sum((b_new - b)**2) < 1e-7 * np.sum(b**2) and np.sum((a_new - a)**2) < 1e-7 * np.sum(a**2)):
-            break
-        a = a_new
-        b = b_new
-        M = a.dot(one_row)+one_col.dot(b.T)
-        tau = np.sum(Omega*Z*(O-M))/np.sum(Omega*Z)
-
-        if debug:
-            print(tau)
-    return M, tau
+#deprecated
+#for backward compatability  
+def DID(O, Z):
+    solver = DIDPanelSolver(Z)
+    res = solver.fit(O)
+    return res.M, res.tau
