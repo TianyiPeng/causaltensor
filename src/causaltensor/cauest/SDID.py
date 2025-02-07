@@ -9,7 +9,8 @@ from causaltensor.cauest.result import Result
     Created by Tianyi Peng, 2021/03/01
     Credit to Andy Zheng for the revised version, 2022/01/15
     
-    [1] Arkhangelsky, Dmitry, Susan Athey, David A. Hirshberg, Guido W. Imbens, and Stefan Wager. Synthetic difference in differences. No. w25532. National Bureau of Economic Research, 2019.
+    [1] Arkhangelsky, Dmitry, Susan Athey, David A. Hirshberg, Guido W. Imbens, and Stefan Wager. 2021. 
+        "Synthetic Difference-in-Differences." American Economic Review, 111 (12): 4088–4118
 '''
 class SDIDResult(Result):
     def __init__(self, baseline = None, tau=None, beta=None, row_fixed_effects=None, column_fixed_effects=None, return_tau_scalar=False):
@@ -22,11 +23,16 @@ class SDIDResult(Result):
 
 
 class SDIDPanelSolver(PanelSolver):
-    def __init__(self, Z=None, O=None, treat_units = [-1], starting_time = -1):
+    def __init__(self, Z=None, O=None, X_cov=None, treat_units = [-1], starting_time = -1):
         '''
         Input: 
             O: nxT observation matrix
             Z: nxT binary treatment matrix  
+            X_cov: n x T x p array of exogenous covariates (optional). If provided,
+                    the algorithm will first compute residuals:
+                        Y_res = Y - X_cov * beta_t   (for each time t)
+                    where beta_t is obtained by regressing Y[:,t] on X_cov[:,t] (with an intercept).
+                    This is based on footnote number 4 from [1]
             treat_units: a list containing elements in [0, 1, 2, ..., n-1]
             starting_time: for treat_units, pre-treatment time is 0, 1, .., starting_time-1
         Output:
@@ -38,6 +44,7 @@ class SDIDPanelSolver(PanelSolver):
         self.X = O 
         self.treat_units = treat_units
         self.starting_time = starting_time
+        self.X_cov = X_cov
         if (starting_time == -1):
             self.SDID_preprocess()
 
@@ -56,7 +63,38 @@ class SDIDPanelSolver(PanelSolver):
                 break
         self.starting_time = j + 1
 
+    def adjust_for_covariates(self):
+        """
+        For each time period t, regress the outcome Y[:, t] on the covariates X_cov[:, t]
+        (with intercept) and replace Y[:, t] by the residuals.
+        
+        Input:
+        - self.X is an (n x T) outcome matrix.
+        - self.X_cov is an (n x T x p) array of covariates.
+        
+        Output:
+            self.X will contain the residuals computed as: 
+            Y_res = Y - X_cov * beta_t, for each time period t.
+        """
+        n, T = self.X.shape
+        X_resid = np.zeros_like(self.X)
+        
+        for t in range(T):
+            X_t = self.X_cov[:, t, :]
+            X_t_aug = np.concatenate([np.ones((n, 1)), X_t], axis=1)
+            y_t = self.X[:, t]
+            beta_t, _, _, _ = np.linalg.lstsq(X_t_aug, y_t, rcond=None)
+            y_pred = X_t_aug @ beta_t
+            X_resid[:, t] = y_t - y_pred
+            
+        self.X = X_resid
+        
+    
     def fit(self):
+
+        if self.X_cov is not None:
+            self.adjust_for_covariates()
+
         self.donor_units = []
         for i in range(self.X.shape[0]):
             if (i not in self.treat_units):
@@ -159,10 +197,7 @@ class SDIDPanelSolver(PanelSolver):
         return res
     
 # backward compatibility
-def SDID(O, Z, treat_units = [-1], starting_time = -1):
-    solver = SDIDPanelSolver(Z, O, treat_units, starting_time)
+def SDID(O, Z, X_cov=None, treat_units = [-1], starting_time = -1):
+    solver = SDIDPanelSolver(Z, O, X_cov, treat_units, starting_time)
     res = solver.fit()
     return res.tau
-
-
-    
