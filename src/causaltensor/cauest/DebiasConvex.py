@@ -193,6 +193,9 @@ class DCPanelSolver(PanelSolver):
             M, tau = self.non_convex_PR(suggest_r, initial_tau = pre_tau)
 
         if method == 'auto':
+            '''
+                select the best estimator from non-convex and convex
+            '''
             M1, tau1 = self.non_convex_PR(suggest_r, initial_tau = self.solve_tau(self.O))
             if np.linalg.matrix_rank(M) != suggest_r or np.linalg.norm(self.O-M-np.tensordot(self.Z, tau,  axes=([2], [0]))) > np.linalg.norm(self.O-M1-np.tensordot(self.Z, tau1,  axes=([2], [0]))):
                 M = M1
