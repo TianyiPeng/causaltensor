@@ -31,6 +31,7 @@ class SDIDPanelSolver(PanelSolver):
                     the algorithm will first compute residuals:
                         Y_res = Y - X_cov * beta_t   (for each time t)
                     where beta_t is obtained by regressing Y[:,t] on X_cov[:,t] (with an intercept).
+                    This is based on footnote number 4 from [1].
             treat_units: a list containing elements in [0, 1, 2, ..., n-1]
             starting_time: for treat_units, pre-treatment time is 0, 1, .., starting_time-1
         Output:
