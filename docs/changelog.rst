@@ -3,6 +3,10 @@
 Changelog
 =========
 
+0.1.10 (2025-02-08)
+------------------
+- Added Covariate support for SDID method
+
 0.1.9 (2025-02-07)
 ------------------
 - Added Panel Solver Interface

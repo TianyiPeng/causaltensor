@@ -1,6 +1,6 @@
 [tool.poetry]
 name = "causaltensor"
-version = "0.1.9"
+version = "0.1.10"
 description = "Package for causal inference in panels"
 authors = ["Tianyi Peng <tianyipeng95@gmail.com>",
            "Arushi Jain <arushijain1154@gmail.com>"]
