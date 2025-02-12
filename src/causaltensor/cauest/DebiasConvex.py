@@ -39,11 +39,11 @@ class DCPanelSolver(PanelSolver):
         return small_index, X, Xinv
       
 
-    def fit(self, auto_rank = True, suggest_r = 1, spectrum_cut = 0.002, method='convex'):
+    def fit(self, auto_rank = True, suggest_r = 1, spectrum_cut = 0.002, method='convex', method_non_neg=None):
         if auto_rank:
-            M, tau, std = self.DC_PR_auto_rank(spectrum_cut=spectrum_cut, method=method)
+            M, tau, std = self.DC_PR_auto_rank(spectrum_cut=spectrum_cut, method=method, method_non_neg=method_non_neg)
         else:
-            M, tau, std = self.DC_PR_with_suggested_rank(suggest_r=suggest_r, method=method)
+            M, tau, std = self.DC_PR_with_suggested_rank(suggest_r=suggest_r, method=method, method_non_neg=method_non_neg)
         res = DCResult(baseline=M, tau=tau, std=std)
         return res
 
@@ -52,13 +52,20 @@ class DCPanelSolver(PanelSolver):
         tau = self.Xinv @ (self.X.T @ y)
         return tau 
 
-    def als(self, tau, eps, l=None, r=None):
+    def als(self, tau, eps, l=None, r=None, method_non_neg=None):
         for T in range(2000):
+            M_new = self.O - np.tensordot(self.Z, tau,  axes=([2], [0]))
             #### SVD to find low-rank M
             if l:
-                M = util.SVD_soft(self.O - np.tensordot(self.Z, tau,  axes=([2], [0])), l)
+                if method_non_neg:
+                    M = util.non_negative_decomposition(M=M_new, l=l, method=method_non_neg)
+                else:
+                    M = util.SVD_soft(M_new, l)
             elif r:
-                M = util.SVD(self.O - np.tensordot(self.Z, tau,  axes=([2], [0])), r) #hard truncation
+                if method_non_neg:
+                    M = util.non_negative_decomposition(M=M_new, r=r, method=method_non_neg)
+                else:
+                    M = util.SVD(M_new, r) #hard truncation
 
             #### OLS to get tau
             tau_new = self.solve_tau(self.O - M)
@@ -102,7 +109,7 @@ class DCPanelSolver(PanelSolver):
         PTperpZ = (np.eye(u.shape[0]) - u.dot(u.T)).dot(self.Z).dot(np.eye(vh.shape[1]) - vh.T.dot(vh))
         return PTperpZ
 
-    def DC_PR_with_l(self, l, initial_tau = None, eps = 1e-6):
+    def DC_PR_with_l(self, l, initial_tau = None, eps = 1e-6, method_non_neg=None):
         """
         De-biased Convex Panel Regression with the regularizer l. 
 
@@ -127,12 +134,12 @@ class DCPanelSolver(PanelSolver):
         else:
             tau = initial_tau
 
-        M, tau = self.als(tau, eps, l=l)
+        M, tau = self.als(tau, eps, l=l, method_non_neg=method_non_neg)
         return M, tau
     
 
     
-    def non_convex_PR(self, r, initial_tau = None, eps = 1e-6):
+    def non_convex_PR(self, r, initial_tau = None, eps = 1e-6, method_non_neg=None):
         """
         Non-Convex Panel Regression with the rank r
 
@@ -156,11 +163,11 @@ class DCPanelSolver(PanelSolver):
         else:
             tau = initial_tau
 
-        M, tau = self.als(tau, eps, r=r)
+        M, tau = self.als(tau, eps, r=r, method_non_neg=method_non_neg)
         return M, tau
 
 
-    def DC_PR_with_suggested_rank(self, suggest_r = 1, method = 'non-convex'):
+    def DC_PR_with_suggested_rank(self, suggest_r = 1, method = 'non-convex', method_non_neg=None):
         """
             De-biased Convex Panel Regression with the suggested rank. Gradually decrease the nuclear-norm regularizer l until the rank of the next-iterated estimator exceeds r.
         
@@ -177,23 +184,26 @@ class DCPanelSolver(PanelSolver):
             _, s, _ = util.svd_fast(self.O-np.tensordot(self.Z, pre_tau,  axes=([2], [0])))
             l = s[1]*coef
             ##inital pre_M and pre_tau for current l
-            pre_M, pre_tau = self.DC_PR_with_l(l, initial_tau = pre_tau)
+            pre_M, pre_tau = self.DC_PR_with_l(l, initial_tau = pre_tau, method_non_neg=method_non_neg)
             l = l / coef
             while (True):
-                M, tau = self.DC_PR_with_l(l, initial_tau = pre_tau)
+                M, tau = self.DC_PR_with_l(l, initial_tau = pre_tau, method_non_neg=method_non_neg)
                 if (np.linalg.matrix_rank(M) > suggest_r):
                     M_debias, tau_debias = self.debias(pre_M, pre_tau, l*coef)
-                    M = util.SVD(M_debias, suggest_r)
+                    if method_non_neg:
+                        M = util.SVD_non_negative(M, suggest_r)
+                    else:
+                        M = util.SVD(M_debias, suggest_r)
                     tau = tau_debias 
                     break
                 pre_M = M
                 pre_tau = tau
                 l = l / coef
         if method == 'non-convex':
-            M, tau = self.non_convex_PR(suggest_r, initial_tau = pre_tau)
+            M, tau = self.non_convex_PR(suggest_r, initial_tau = pre_tau, method_non_neg=method_non_neg)
 
         if method == 'auto':
-            M1, tau1 = self.non_convex_PR(suggest_r, initial_tau = self.solve_tau(self.O))
+            M1, tau1 = self.non_convex_PR(suggest_r, initial_tau = self.solve_tau(self.O), method_non_neg=method_non_neg)
             if np.linalg.matrix_rank(M) != suggest_r or np.linalg.norm(self.O-M-np.tensordot(self.Z, tau,  axes=([2], [0]))) > np.linalg.norm(self.O-M1-np.tensordot(self.Z, tau1,  axes=([2], [0]))):
                 M = M1
                 tau = tau1
@@ -243,12 +253,12 @@ class DCPanelSolver(PanelSolver):
 
 
 # backward compatibility
-def DC_PR_auto_rank(O, Z, spectrum_cut = 0.002, method='convex'):
+def DC_PR_auto_rank(O, Z, spectrum_cut = 0.002, method='convex', method_non_neg=None):
     solver = DCPanelSolver(Z, O)
-    res = solver.fit(spectrum_cut=spectrum_cut, method=method)
+    res = solver.fit(spectrum_cut=spectrum_cut, method=method, method_non_neg=method_non_neg)
     return res.M, res.tau, res.std
 
-def DC_PR_with_suggested_rank(O, Z, suggest_r = 1, method = 'convex'):
+def DC_PR_with_suggested_rank(O, Z, suggest_r = 1, method = 'convex', method_non_neg=None):
     solver = DCPanelSolver(Z, O)
-    res = solver.fit(auto_rank=False, suggest_r=suggest_r, method=method)
+    res = solver.fit(auto_rank=False, suggest_r=suggest_r, method=method, method_non_neg=method_non_neg)
     return res.M, res.tau, res.std

@@ -1,5 +1,67 @@
 import numpy as np
 
+def non_negative_decomposition(M, r=None, l=None, method='nnmf'):
+    """
+    """
+    if l:
+        # Not Implemented yet the NNMF with l.
+        M_approx = SVD_soft_non_negative(X=M, l=l)
+    elif r:
+        if method == "nnmf":
+            M_approx = nmf_decomposition(M=M, r=r)
+        elif method == "svd":
+            M_approx = SVD_non_negative(M=M, r=r)
+
+    return M_approx
+
+def nmf_decomposition(M, r, init='random', max_iter=2000, random_state=None):
+    from sklearn.decomposition import NMF
+    import numpy as np
+    """
+    Perform Non-Negative Matrix Factorization (NMF) on matrix M.
+
+    Parameters:
+        M (ndarray): Input matrix.
+        r (int): Desired rank for the decomposition.
+        init (str): Initialization method ('random' or 'nndsvd').
+        max_iter (int): Maximum number of iterations.
+        random_state (int): Seed for reproducibility.
+
+    Info:
+        W (ndarray): Left factor matrix of shape (M.shape[0], r).
+        H (ndarray): Right factor matrix of shape (r, M.shape[1]).
+
+    Returns:
+        reconstructed (ndarray): Reconstructed matrix of shape M.shape.
+    """
+    
+    # Ensure M is non-negative
+    M_nonneg = np.maximum(M, 0)
+
+
+    model = NMF(n_components=r, init=init, max_iter=max_iter, random_state=random_state)
+
+    W = model.fit_transform(M_nonneg)
+    H = model.components_
+
+    M_approx = W @ H
+
+    return M_approx
+
+def SVD_non_negative(M, r):
+    """
+    Ensure nonnegative output in the reconstructred M matrix with r rank using 
+    M_{ij} = max(M_{ij}, 0) 
+    """
+    M_approx = SVD(M=M, r=r)
+    M_approx[M_approx < 0] = 0
+    return M_approx
+
+def SVD_soft_non_negative(X, l):
+    X_approx = SVD_soft(X, l)
+    X_approx[X_approx < 0] = 0
+    return X_approx
+
 def noise_to_signal(X, M, Ω):
     return np.sqrt(np.sum((Ω*X - Ω*M)**2) / np.sum((Ω*M)**2))
 
