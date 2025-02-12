@@ -3,6 +3,12 @@
 Changelog
 =========
 
+0.1.9 (2025-02-07)
+------------------
+- Added Panel Solver Interface
+- Added more test cases
+- Added covariate support for synthetic control 
+
 0.1.8 (2023-11-05)
 ------------------
 - Enhanced MC-NNM functionality with covariate integration and improved handling of missing data.

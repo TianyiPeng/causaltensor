@@ -2,11 +2,23 @@ import numpy as np
 
 def non_negative_decomposition(M, r=None, l=None, method='nnmf'):
     """
+    Apply a non-negative decomposition with either a soft regularization (l) or a hard rank constraint (r).
+
+    Parameters:
+        M (ndarray): Input matrix.
+        r (int, optional): Hard rank constraint.
+        l (float, optional): Regularization parameter used as alpha in NNMF.
+        method (str): Either 'nnmf' or 'svd'.
+
+    Returns:
+        M_approx (ndarray): Low-rank approximation of M.
     """
-    if l:
-        # Not Implemented yet the NNMF with l.
-        M_approx = SVD_soft_non_negative(X=M, l=l)
-    elif r:
+    if l is not None:
+        if method == "nnmf":
+            M_approx = nmf_decomposition(M=M, r=r, l=l)
+        elif method == "svd":
+            M_approx = SVD_soft_non_negative(X=M, l=l)
+    elif r is not None:
         if method == "nnmf":
             M_approx = nmf_decomposition(M=M, r=r)
         elif method == "svd":
@@ -14,39 +26,47 @@ def non_negative_decomposition(M, r=None, l=None, method='nnmf'):
 
     return M_approx
 
-def nmf_decomposition(M, r, init='random', max_iter=2000, random_state=None):
-    from sklearn.decomposition import NMF
-    import numpy as np
+def nmf_decomposition(M, r=None, l=None, init='random', max_iter=2000, random_state=None):
     """
-    Perform Non-Negative Matrix Factorization (NMF) on matrix M.
+    Perform Non-Negative Matrix Factorization (NMF) on matrix M with an option to include regularization.
 
     Parameters:
         M (ndarray): Input matrix.
-        r (int): Desired rank for the decomposition.
+        r (int, optional): Desired rank (number of components). Used as the number of components if l is provided;
+                           if not provided, defaults to the number of columns of M.
+        l (float, optional): Regularization parameter (alpha). When provided, it is passed to the NMF algorithm.
         init (str): Initialization method ('random' or 'nndsvd').
         max_iter (int): Maximum number of iterations.
         random_state (int): Seed for reproducibility.
 
-    Info:
-        W (ndarray): Left factor matrix of shape (M.shape[0], r).
-        H (ndarray): Right factor matrix of shape (r, M.shape[1]).
-
     Returns:
-        reconstructed (ndarray): Reconstructed matrix of shape M.shape.
+        M_approx (ndarray): Reconstructed matrix.
     """
-    
-    # Ensure M is non-negative
+    from sklearn.decomposition import NMF
+
     M_nonneg = np.maximum(M, 0)
 
+    n_components = r if r is not None else M.shape[1]
 
-    model = NMF(n_components=r, init=init, max_iter=max_iter, random_state=random_state)
+    # l as regularization parameter on H, W and L1 regularization somewhat similar to soft-thresholding
+    if l is not None:
+        model = NMF(n_components=n_components, init=init, max_iter=max_iter,
+                    random_state=random_state, alpha_H=l, alpha_W=l, l1_ratio=1.0)
+    elif r is not None:
+        # Use the hard rank constraint.
+        model = NMF(n_components=n_components, init=init, max_iter=max_iter,
+                    random_state=random_state)
+    else:
+        # default to full factorization
+        model = NMF(n_components=M.shape[1], init=init, max_iter=max_iter,
+                    random_state=random_state)
 
     W = model.fit_transform(M_nonneg)
     H = model.components_
-
     M_approx = W @ H
 
     return M_approx
+
 
 def SVD_non_negative(M, r):
     """

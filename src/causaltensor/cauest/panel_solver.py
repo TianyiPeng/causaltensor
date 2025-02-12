@@ -98,7 +98,7 @@ class FixedEffectPanelSolver(PanelSolver):
         if (X is not None):
             demean_X = np.zeros_like(X)
             for i in range(X.shape[2]):
-                demean_X[:, :, i], _, _ = self.demean(X[:, :, i])
+                demean_X[:, :, i], _, _ = self.demean(X[:, :, i], eps=demean_eps, max_iter=demean_max_iter)
             self.demean_X = demean_X
             self.OLS_solver = OLSPanelSolver(demean_X, Omega)
 

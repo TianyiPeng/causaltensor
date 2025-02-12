@@ -9,7 +9,8 @@ from causaltensor.cauest.result import Result
     Created by Tianyi Peng, 2021/03/01
     Credit to Andy Zheng for the revised version, 2022/01/15
     
-    [1] Arkhangelsky, Dmitry, Susan Athey, David A. Hirshberg, Guido W. Imbens, and Stefan Wager. Synthetic difference in differences. No. w25532. National Bureau of Economic Research, 2019.
+    [1] Arkhangelsky, Dmitry, Susan Athey, David A. Hirshberg, Guido W. Imbens, and Stefan Wager. 2021. 
+        "Synthetic Difference-in-Differences." American Economic Review, 111 (12): 4088–4118
 '''
 class SDIDResult(Result):
     def __init__(self, baseline = None, tau=None, beta=None, row_fixed_effects=None, column_fixed_effects=None, return_tau_scalar=False):
@@ -31,6 +32,7 @@ class SDIDPanelSolver(PanelSolver):
                     the algorithm will first compute residuals:
                         Y_res = Y - X_cov * beta_t   (for each time t)
                     where beta_t is obtained by regressing Y[:,t] on X_cov[:,t] (with an intercept).
+                    This is based on footnote number 4 from [1]
             treat_units: a list containing elements in [0, 1, 2, ..., n-1]
             starting_time: for treat_units, pre-treatment time is 0, 1, .., starting_time-1
         Output:
