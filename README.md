@@ -1,6 +1,9 @@
 # CausalTensor
- CausalTensor is a python package for doing causal inference and policy evaluation using panel data. 
+ CausalTensor is a python package for doing causal inference and policy evaluation using panel data. The package achieves 13K downloads by 2025-03.  
 
+[![PyPI Version](https://badge.fury.io/py/causaltensor.svg)](https://pypi.org/project/causaltensor/)
+[![Documentation Status](https://readthedocs.org/projects/causaltensor/badge/?version=latest)](https://causaltensor.readthedocs.io/en/latest/?badge=latest)
+[![Downloads](https://static.pepy.tech/badge/causaltensor)](https://pepy.tech/project/causaltensor)
 
 ## What is CausalTensor
 CausalTensor is a suite of tools for addressing questions like "What is the impact of strategy X to outcome Y" given time-series data colleting from multiple units. Answering such questions has wide range of applications from econometrics, operations research, business analytics, polictical science, to healthcare. Please visit our [complete documentation](https://causaltensor.readthedocs.io/) for more information. 
