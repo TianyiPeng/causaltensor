@@ -39,11 +39,16 @@ class DCPanelSolver(PanelSolver):
         return small_index, X, Xinv
       
 
-    def fit(self, auto_rank = True, suggest_r = 1, spectrum_cut = 0.002, method='convex'):
-        if auto_rank:
+    def fit(self, suggest_r = None, auto_rank = True, spectrum_cut = 0.002, method='auto'):
+        if suggest_r is not None:
+            #assert auto_rank == False, "suggest_r and auto_rank cannot be both True"
+            ### suggest_r will be prioritized over auto_rank
+            M, tau, std =self.DC_PR_with_suggested_rank(suggest_r=suggest_r, method=method)
+        elif auto_rank:
             M, tau, std = self.DC_PR_auto_rank(spectrum_cut=spectrum_cut, method=method)
         else:
-            M, tau, std = self.DC_PR_with_suggested_rank(suggest_r=suggest_r, method=method)
+            raise ValueError("Either suggest_r or auto_rank must be provided")
+        
         res = DCResult(baseline=M, tau=tau, std=std)
         return res
 

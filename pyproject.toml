@@ -1,6 +1,6 @@
 [tool.poetry]
 name = "causaltensor"
-version = "0.1.10"
+version = "0.1.11"
 description = "Package for causal inference in panels"
 authors = ["Tianyi Peng <tianyipeng95@gmail.com>",
            "Arushi Jain <arushijain1154@gmail.com>"]
@@ -24,6 +24,7 @@ importlib-metadata = {version = "^3.0", python = "<=3.11"}
 toolz = "^0.12.1"
 matplotlib = "^3.8.0"
 pandas = "^2.1.0"
+tqdm = "^4.67.1"
 
 [tool.poetry.group.dev.dependencies]
 pytest = "^8.1.1"

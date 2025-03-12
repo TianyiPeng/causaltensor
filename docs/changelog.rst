@@ -3,6 +3,10 @@
 Changelog
 =========
 
+0.1.11 (2025-03-12)
+------------------
+- Fix a bug in the DC method: suggest_r was ignored due to the priority of auto_rank and now it will be prioritized over auto_rank
+
 0.1.10 (2025-02-08)
 ------------------
 - Added Covariate support for SDID method
