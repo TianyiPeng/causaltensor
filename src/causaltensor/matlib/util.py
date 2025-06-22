@@ -13,6 +13,9 @@ def non_negative_decomposition(M, r=None, l=None, method='nnmf'):
     Returns:
         M_approx (ndarray): Low-rank approximation of M.
     """
+    if method not in ['nnmf', 'svd']:
+        raise ValueError(f"Invalid method '{method}'. Supported methods are 'nnmf' and 'svd'.")
+
     if l is not None:
         if method == "nnmf":
             M_approx = nmf_decomposition(M=M, r=r, l=l)
