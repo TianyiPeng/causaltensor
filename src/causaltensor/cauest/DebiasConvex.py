@@ -36,14 +36,16 @@ class DCPanelSolver(PanelSolver):
         X = self.Z[small_index, :].astype(float) # small X
         ## X.shape = (#non_zero entries of Zs, num_treat)
         Xinv = np.linalg.inv(X.T @ X)
-        return small_index, X, Xinv
-      
+        return small_index, X, Xinv  
 
-    def fit(self, auto_rank = True, suggest_r = 1, spectrum_cut = 0.002, method='convex', method_non_neg=None):
-        if auto_rank:
+    def fit(self, suggest_r=None, auto_rank=True, spectrum_cut=0.002, method='auto', method_non_neg=None):
+        if suggest_r is not None:
+            M, tau, std = self.DC_PR_with_suggested_rank(suggest_r=suggest_r, method=method, method_non_neg=method_non_neg)
+        elif auto_rank:
             M, tau, std = self.DC_PR_auto_rank(spectrum_cut=spectrum_cut, method=method, method_non_neg=method_non_neg)
         else:
-            M, tau, std = self.DC_PR_with_suggested_rank(suggest_r=suggest_r, method=method, method_non_neg=method_non_neg)
+            raise ValueError("Either suggest_r or auto_rank must be provided")
+
         res = DCResult(baseline=M, tau=tau, std=std)
         return res
 
