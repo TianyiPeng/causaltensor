@@ -1,5 +1,3 @@
-
-
 class Result():
     def __init__(self, baseline = None, tau = None, covariance_tau = None, std_tau = None, return_tau_scalar=False):
         self.baseline = baseline # the baseline outcome (i.e, the outcome without treatment and noise)

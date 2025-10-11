@@ -25,8 +25,17 @@ def stagger_pattern_RSC(O, Z, suggest_r = 1):
     tau = np.sum(Z*(O-Mhat)) / np.sum(Z)
     return Mhat, tau
 
-def robust_synthetic_control(O, suggest_r=-1, treat_units = [0], starting_time = 100):
+def robust_synthetic_control(O, Z, suggest_r=-1):
     ##Step 1, denoise
+
+    treat_units = np.where(np.any(Z == 1, axis=1))[0]
+    
+    if len(treat_units) == 0:
+        raise Exception('Error: no treated units found in Z matrix!')
+    
+    # Calculate starting_time only from treated units
+    treated_sums = np.sum(Z[treat_units, :], axis=1).astype(int)
+    starting_time = O.shape[1] - min(treated_sums)
 
     if (starting_time == 0):
         raise Exception('Error: treatment starting at t=0 in synthetic control!') 
