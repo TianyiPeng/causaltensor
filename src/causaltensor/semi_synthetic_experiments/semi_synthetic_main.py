@@ -290,10 +290,10 @@ def main():
     O = np.loadtxt("tests/MLAB_data.txt")
     O = O[8:, :]  # California Smoke Dataset preprocessing
     O = O.T
-    n_trials = 2
+    n_trials = 5
     treated_states = [38]
     treat_start_years = [19]
-    treatment_levels = [0.2, 0.1, 0.05, 0.01][:1]
+    treatment_levels = [0.2, 0.1, 0.05, 0.01]
     
     # Methods to test: dict mapping method names to valid patterns
     # None means use default (all methods with their valid patterns)
