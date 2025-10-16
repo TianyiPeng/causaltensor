@@ -5,8 +5,6 @@ from causaltensor.cauest.DID import DID
 from causaltensor.cauest.SDID import SDID
 from causaltensor.cauest.DebiasConvex import DC_PR_auto_rank, DC_PR_with_suggested_rank
 from causaltensor.cauest.MCNNM import MC_NNM_with_cross_validation, MC_NNM_with_suggested_rank
-from causaltensor.matlib import low_rank_M0_normal
-from causaltensor.matlib import iid_treatment
 import os
 
 np.random.seed(0)
