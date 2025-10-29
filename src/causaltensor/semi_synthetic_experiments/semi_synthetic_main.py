@@ -11,7 +11,7 @@ from causaltensor.semi_synthetic_experiments.semi_synthetic_utils import *
 from causaltensor.semi_synthetic_experiments.treatment_patterns import *
 from causaltensor.datasets.dataset_loader import load_dataset
 
-
+#TODO: Derive this from treatment matrix Z. This will help us include retail datasets
 def extract_treatment_info(dataset_name):
     """
     Extract treatment information (treated entity and treatment start year) for each dataset.
@@ -31,6 +31,7 @@ def extract_treatment_info(dataset_name):
         'basque': ('Basque Country (Pais Vasco)', 1975),
         'german_reunification': ('West Germany', 1990),
         'texas': ('Texas', 1993),
+        #TODO: Check why SDID fails for all PWT datasets
         'pwt_spain_eu': ('Spain', 1986),
         'pwt_chile_trade': ('Chile', 1976),
         'pwt_korea_democracy': ('Republic of Korea', 1988),
@@ -410,3 +411,5 @@ if __name__ == "__main__":
     print(f"Running semi-synthetic experiments with dataset: {dataset_name}")
     results = main(dataset_name)
 
+
+#TODO: Add real experiment results for datasets where treatment patters are available
