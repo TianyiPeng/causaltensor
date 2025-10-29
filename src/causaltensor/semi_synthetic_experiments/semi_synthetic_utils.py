@@ -1,6 +1,42 @@
 import numpy as np
 
 
+def sample_treatment_parameters(n, T, rng):
+    """
+    Sample treatment pattern parameters with safe integer bounds.
+    
+    Args:
+        n: Number of entities
+        T: Number of time periods
+        rng: Random number generator
+    
+    Returns:
+        Tuple of (m1, m2, lookback_a, duration_b)
+    """
+    # m1 in [ceil(0.05*n), floor(0.2*n)], ensure >=1
+    m1_low = max(1, int(np.ceil(0.05 * n)))
+    m1_high = max(m1_low, int(np.floor(0.2 * n)))
+    m1 = int(rng.integers(m1_low, m1_high + 1))
+    
+    # m2 in [ceil(0.6*T), floor(0.8*T)] capped to [0, T-1]
+    m2_low = min(int(np.ceil(0.6 * T)), T - 1)
+    m2_high = min(max(m2_low, int(np.floor(0.8 * T))), T - 1)
+    m2 = int(rng.integers(m2_low, m2_high + 1))
+    
+    # lookback_a in [ceil(0.05*T), floor(0.1*T)], clamp to [1, T-1]
+    lb_low = max(1, int(np.ceil(0.05 * T)))
+    lb_high = max(lb_low, int(np.floor(0.1 * T)))
+    lookback_a = int(rng.integers(lb_low, lb_high + 1))
+    lookback_a = min(lookback_a, max(1, T - 1))
+    
+    # duration_b in [ceil(0.1*T), floor(0.2*T)], clamp to [1, T-1]
+    dur_low = max(1, int(np.ceil(0.1 * T)))
+    dur_high = max(dur_low, int(np.floor(0.2 * T)))
+    duration_b = int(rng.integers(dur_low, dur_high + 1))
+    duration_b = min(duration_b, max(1, T - 1))
+    
+    return m1, m2, lookback_a, duration_b
+
 def build_baseline_M(O, treated_states, treat_start_years, type = 'control'):
     if type == 'control':
         # Create boolean mask from list of treated state indices

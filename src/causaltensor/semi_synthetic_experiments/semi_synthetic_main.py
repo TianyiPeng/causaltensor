@@ -9,6 +9,39 @@ from causaltensor.cauest.RobustSyntheticControl import robust_synthetic_control
 from causaltensor.cauest.OLSSyntheticControl import ols_synthetic_control
 from causaltensor.semi_synthetic_experiments.semi_synthetic_utils import *
 from causaltensor.semi_synthetic_experiments.treatment_patterns import *
+from causaltensor.datasets.dataset_loader import load_dataset
+
+#TODO: Derive this from treatment matrix Z. This will help us include retail datasets
+def extract_treatment_info(dataset_name):
+    """
+    Extract treatment information (treated entity and treatment start year) for each dataset.
+    
+    Parameters
+    ----------
+    dataset_name : str
+        Name of the dataset
+        
+    Returns
+    -------
+    tuple
+        (treated_entity, treatment_start_year)
+    """
+    treatment_info = {
+        'smoking': ('California', 1988),
+        'basque': ('Basque Country (Pais Vasco)', 1975),
+        'german_reunification': ('West Germany', 1990),
+        'texas': ('Texas', 1993),
+        #TODO: Check why SDID fails for all PWT datasets
+        'pwt_spain_eu': ('Spain', 1986),
+        'pwt_chile_trade': ('Chile', 1976),
+        'pwt_korea_democracy': ('Republic of Korea', 1988),
+        'pwt_norway_oil': ('Norway', 1971)
+    }
+    
+    if dataset_name not in treatment_info:
+        raise ValueError(f"Unknown dataset: {dataset_name}. Available datasets: {list(treatment_info.keys())}")
+    
+    return treatment_info[dataset_name]
 
 
 def get_tau_from_method(method_name, O_syn, Z):
@@ -108,21 +141,9 @@ def run_semi_synthetic_experiment(O, treated_states, treat_start_years,
     
     results = []
     
-    # Define treatment patterns
-    if baseline_type == 'control':
-        treatment_patterns = {
-            'IID': lambda M: Z_iid(M, p_treat=0.2),
-            'Block': lambda M: Z_block(M, m1=10, m2=20),
-            'Staggered': lambda M: Z_stagger(M, m1=10, min_start=20),
-            'Adaptive': lambda M: Z_adaptive(M, lookback_a=5, duration_b=5)
-        }
-    elif baseline_type == 'pre-treatment':
-        treatment_patterns = {
-            'IID': lambda M: Z_iid(M, p_treat=0.2),
-            'Block': lambda M: Z_block(M, m1=10, m2=10),
-            'Staggered': lambda M: Z_stagger(M, m1=10, min_start=10),
-            'Adaptive': lambda M: Z_adaptive(M, lookback_a=4, duration_b=2)
-        }
+    # Patterns considered (parameters sampled per trial below)
+    if baseline_type in ('control', 'pre-treatment'):
+        patterns = ['IID', 'Block', 'Staggered', 'Adaptive']
     else:
         raise ValueError(f"Invalid baseline type: {baseline_type}")
     
@@ -130,20 +151,39 @@ def run_semi_synthetic_experiment(O, treated_states, treat_start_years,
         if verbose:
             print(f"--- Treatment level: {t_level} ---")
         
-        for pattern_name in treatment_patterns.keys():
+        for pattern_name in patterns:
             if verbose:
                 print(f"  {pattern_name}:")
             
             # Run multiple trials
             for trial in range(n_trials):
-                # Set seed for reproducibility while ensuring different patterns per trial
-                np.random.seed(trial)
-                
-                # Generate treatment pattern (different for each trial due to seed)
-                Z = treatment_patterns[pattern_name](M)
-                
-                # Inject treatment
-                O_syn, tau_star = inject_treatment_centered(M, Z, treatment_level=t_level)
+                # Set seeds for reproducibility
+                # np.random.seed(trial)
+                rng = np.random.default_rng(trial)
+
+                # Sample parameters for this trial
+                n_local, T_local = M.shape
+                m1, m2, lookback_a, duration_b = sample_treatment_parameters(n_local, T_local, rng)
+
+                # Generate treatment pattern deterministically for this trial
+                if pattern_name == 'IID':
+                    Z = Z_iid(M, p_treat=0.2, rng=rng)
+                elif pattern_name == 'Block':
+                    Z = Z_block(M, m1=m1, m2=m2, rng=rng)
+                elif pattern_name == 'Staggered':
+                    Z = Z_stagger(M, m1=m1, min_start=m2, rng=rng)
+                elif pattern_name == 'Adaptive':
+                    Z = Z_adaptive(M, lookback_a=lookback_a, duration_b=duration_b)
+                else:
+                    raise ValueError(f"Unknown pattern: {pattern_name}")
+                # Guard: ensure at least one treated cell to avoid assertion failure
+                if Z.sum() == 0:
+                    i = int(rng.integers(0, n_local))
+                    j = int(rng.integers(0, max(1, T_local)))
+                    Z[i, j if T_local == 0 else j % T_local] = 1
+
+                # Inject treatment deterministically for this trial
+                O_syn, tau_star = inject_treatment_centered(M, Z, treatment_level=t_level, rng=rng)
                 
                 # Test each method (only if valid for this pattern)
                 for method_name, valid_patterns in methods.items():
@@ -182,7 +222,7 @@ def run_semi_synthetic_experiment(O, treated_states, treat_start_years,
 
 
 def run_experiments(O, treated_states, treat_start_years, treatment_levels, baseline_type, 
-                    methods=None, n_trials=10):
+                    methods=None, n_trials=10, dataset_name=None):
     """
     Run experiments for a given baseline type and save results.
     
@@ -202,6 +242,8 @@ def run_experiments(O, treated_states, treat_start_years, treatment_levels, base
         List of methods to test
     n_trials : int, default=10
         Number of trials to run for each method/pattern combination
+    dataset_name : str, optional
+        Name of the dataset for organizing results
     """
     results_df = run_semi_synthetic_experiment(
         O=O,
@@ -252,7 +294,10 @@ def run_experiments(O, treated_states, treat_start_years, treatment_levels, base
     print()
     
     # Save detailed results (all trials) to CSV
-    results_dir = 'src/causaltensor/semi_synthetic_experiments/results'
+    if dataset_name:
+        results_dir = f'src/causaltensor/semi_synthetic_experiments/results/{dataset_name}'
+    else:
+        results_dir = 'src/causaltensor/semi_synthetic_experiments/results'
     os.makedirs(results_dir, exist_ok=True)
     output_path = f"{results_dir}/semi_synthetic_{baseline_type}_results_detailed.csv"
     results_df.to_csv(output_path, index=False)
@@ -267,12 +312,12 @@ def run_experiments(O, treated_states, treat_start_years, treatment_levels, base
 
 
 
-def main():
+def main(dataset_name="smoking"):
     """
     Main function to run the semi-synthetic experiments.
     
     This function:
-    1. Loads the California Smoke dataset
+    1. Loads the specified dataset using dataset_loader
     2. Runs experiments with all methods across different:
        - Treatment patterns (IID, Block, Staggered, Adaptive)
        - Treatment levels (0.2, 0.1, 0.05, 0.01)
@@ -285,15 +330,31 @@ def main():
        - SDID: Synthetic Difference-in-Differences
        - SC: Synthetic Control (OLS)
        - RobustSyntheticControl: Robust Synthetic Control
+    
+    Parameters
+    ----------
+    dataset_name : str, default="smoking"
+        Name of the dataset to load. Available datasets:
+        smoking, basque, german_reunification, texas, pwt_spain_eu, 
+        pwt_chile_trade, pwt_korea_democracy, pwt_norway_oil
     """
+    # Load dataset
+    print(f"Loading dataset: {dataset_name}")
+    Y_df, Z_df, X_df = load_dataset(dataset_name)
+    
+    # Convert to numpy array for compatibility with existing code
+    O = Y_df.values
+    
+    # Extract treatment information
+    treated_entity, treatment_start_year = extract_treatment_info(dataset_name)
+    
+    # Find treated state index and treatment start year index
+    treated_states = [Y_df.index.get_loc(treated_entity)]
+    treat_start_years = [Y_df.columns.get_loc(treatment_start_year)]
+    
     # Configuration
-    O = np.loadtxt("tests/MLAB_data.txt")
-    O = O[8:, :]  # California Smoke Dataset preprocessing
-    O = O.T
-    n_trials = 5
-    treated_states = [38]
-    treat_start_years = [19]
-    treatment_levels = [0.2, 0.1, 0.05, 0.01]
+    n_trials = 1
+    treatment_levels = [0.2, 0.1, 0.05, 0.01][:1]
     
     # Methods to test: dict mapping method names to valid patterns
     # None means use default (all methods with their valid patterns)
@@ -307,9 +368,9 @@ def main():
     print("="*80)
     print("Semi-Synthetic Causal Inference Experiments - Comparison Study")
     print("="*80)
-    print(f"Dataset: California Smoke (shape: {O.shape})")
-    print(f"Treated states: {treated_states}")
-    print(f"Treatment start years: {treat_start_years}")
+    print(f"Dataset: {dataset_name} (shape: {O.shape})")
+    print(f"Treated entity: {treated_entity} (index: {treated_states[0]})")
+    print(f"Treatment start year: {treatment_start_year} (index: {treat_start_years[0]})")
     print(f"Treatment levels: {treatment_levels}")
     print(f"Number of trials per method/pattern: {n_trials}")
     print("="*80)
@@ -318,14 +379,14 @@ def main():
     # Run experiments for both baseline types
     results_control, agg_control = run_experiments(
         O, treated_states, treat_start_years, treatment_levels, 
-        "control", methods, n_trials
+        "control", methods, n_trials, dataset_name
     )
     
     print("\n" + "="*80 + "\n")
     
     results_pretreatment, agg_pretreatment = run_experiments(
         O, treated_states, treat_start_years, treatment_levels, 
-        "pre-treatment", methods, n_trials
+        "pre-treatment", methods, n_trials, dataset_name
     )
     
     print("\n" + "="*80)
@@ -339,5 +400,16 @@ def main():
  
  
 if __name__ == "__main__":
-    results = main()
+    import sys
+    
+    # Allow dataset name to be passed as command line argument
+    if len(sys.argv) > 1:
+        dataset_name = sys.argv[1]
+    else:
+        dataset_name = "smoking"  # default dataset
+    
+    print(f"Running semi-synthetic experiments with dataset: {dataset_name}")
+    results = main(dataset_name)
 
+
+#TODO: Add real experiment results for datasets where treatment patters are available
