@@ -14,6 +14,8 @@ from typing import Optional, Dict, Any, Tuple
 def create_y_dataframe(df: pd.DataFrame, index_col: str, column_col: str, value_col: str) -> pd.DataFrame:
     """
     Create Y dataframe (entity x time matrix) from long-form data.
+    Removes rows or columns with NaN values before pivoting, choosing which to remove
+    based on which has a higher percentage of NaNs.
     
     Args:
         df: Long-form dataframe
@@ -26,6 +28,34 @@ def create_y_dataframe(df: pd.DataFrame, index_col: str, column_col: str, value_
     """
     df = df.copy()  # Avoid SettingWithCopyWarning
     df[column_col] = df[column_col].astype(int)
+    
+    # Check for NaN values in value_col
+    if df[value_col].isna().any():
+        # Calculate how many data points would be lost by removing entities vs times
+        entities_with_nan = df[df[value_col].isna()][index_col].unique()
+        times_with_nan = df[df[value_col].isna()][column_col].unique()
+        
+        total_entities = df[index_col].nunique()
+        total_times = df[column_col].nunique()
+        total_rows = len(df)
+        
+        # Count how many rows would be removed by each strategy
+        rows_if_remove_entities = len(df[df[index_col].isin(entities_with_nan)])
+        rows_if_remove_times = len(df[df[column_col].isin(times_with_nan)])
+        
+        pct_entities_with_nan = len(entities_with_nan) / total_entities if total_entities > 0 else 0
+        pct_times_with_nan = len(times_with_nan) / total_times if total_times > 0 else 0
+        
+        # Remove whichever loses fewer total data points
+        if rows_if_remove_entities <= rows_if_remove_times:
+            # Remove entities (rows) - loses fewer data points
+            df = df[~df[index_col].isin(entities_with_nan)]
+            print(f"Removed {len(entities_with_nan)} entities ({pct_entities_with_nan:.1%}) with NaN values, losing {rows_if_remove_entities}/{total_rows} data points ({rows_if_remove_entities/total_rows:.1%})")
+        else:
+            # Remove time periods (columns) - loses fewer data points
+            df = df[~df[column_col].isin(times_with_nan)]
+            print(f"Removed {len(times_with_nan)} time periods ({pct_times_with_nan:.1%}) with NaN values, losing {rows_if_remove_times}/{total_rows} data points ({rows_if_remove_times/total_rows:.1%})")
+    
     Y_df = df.pivot(index=index_col, columns=column_col, values=value_col)
     return Y_df
 
@@ -69,8 +99,9 @@ def create_x_dataframe(df: pd.DataFrame, Y_df: pd.DataFrame, index_col: str, tim
     Returns:
         X_df: Covariates matrix with entities as rows
     """
-    # Filter to averaging period
+    # Filter to averaging period and only entities present in Y_df
     mask = (df[time_col] >= avg_start_year) & (df[time_col] <= avg_end_year)
+    mask = mask & df[index_col].isin(Y_df.index) & df[time_col].isin(Y_df.columns)
     
     # Average covariates over period
     X_df = (
@@ -79,11 +110,15 @@ def create_x_dataframe(df: pd.DataFrame, Y_df: pd.DataFrame, index_col: str, tim
           .mean()
     )
     
+    # Set index to match Y_df for proper alignment
+    X_df = X_df.set_index(index_col)
+    
     # Add additional columns from Y_df if specified
     if additional_cols is not None:
         for col_name, year in additional_cols.items():
             if year in Y_df.columns:
-                X_df[col_name] = Y_df[year].values
+                # Use loc to ensure proper alignment with Y_df index
+                X_df[col_name] = Y_df.loc[X_df.index, year]
     
     return X_df
 

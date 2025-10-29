@@ -70,7 +70,7 @@ def robust_synthetic_control(O, Z, suggest_r=-1):
         valid_start = int(starting_time/2+0.5)
 
         opt_MSE = 1e9
-        opt_r = 1e9
+        opt_r = 2 # why was it initialized to 1e9?
 
         #Cross Validation to choose the optimal r
 
