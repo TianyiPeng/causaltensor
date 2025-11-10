@@ -7,8 +7,20 @@ Each dataset returns Y_df (outcome matrix), and optionally Z_df (treatment matri
 
 import pandas as pd
 import numpy as np
-import pyreadr
-from typing import Optional, Dict, Any, Tuple
+from typing import Optional, Dict, Any, Tuple, Callable
+
+try:
+    import pyreadr  # type: ignore
+except ImportError:  # pragma: no cover - optional dependency
+    pyreadr = None
+
+
+def _require_pyreadr(dataset_name: str) -> None:
+    if pyreadr is None:
+        raise ImportError(
+            f"Loading dataset '{dataset_name}' requires the optional dependency 'pyreadr'. "
+            "Install it with `pip install pyreadr`."
+        )
 
 
 def create_y_dataframe(df: pd.DataFrame, index_col: str, column_col: str, value_col: str) -> pd.DataFrame:
@@ -148,37 +160,17 @@ def load_dataset(dataset_name: str, datasets_path: str = "src/causaltensor/datas
         - truus: Truus retail dataset
         - movielens: MovieLens recommendation dataset
     """
-    
-    if dataset_name == "smoking":
-        return _load_smoking_dataset(datasets_path)
-    elif dataset_name == "basque":
-        return _load_basque_dataset(datasets_path)
-    elif dataset_name == "german_reunification":
-        return _load_german_reunification_dataset(datasets_path)
-    elif dataset_name == "texas":
-        return _load_texas_dataset(datasets_path)
-    elif dataset_name == "pwt_spain_eu":
-        return _load_pwt_spain_eu_dataset(datasets_path)
-    elif dataset_name == "pwt_chile_trade":
-        return _load_pwt_chile_trade_dataset(datasets_path)
-    elif dataset_name == "pwt_korea_democracy":
-        return _load_pwt_korea_democracy_dataset(datasets_path)
-    elif dataset_name == "pwt_norway_oil":
-        return _load_pwt_norway_oil_dataset(datasets_path)
-    elif dataset_name == "retailrocket":
-        return _load_retailrocket_dataset(datasets_path)
-    elif dataset_name == "dunnhumby":
-        return _load_dunnhumby_dataset(datasets_path)
-    elif dataset_name == "truus":
-        return _load_truus_dataset(datasets_path)
-    elif dataset_name == "movielens":
-        return _load_movielens_dataset(datasets_path)
-    else:
-        raise ValueError(f"Unknown dataset: {dataset_name}. Available datasets: smoking, basque, german_reunification, texas, pwt_spain_eu, pwt_chile_trade, pwt_korea_democracy, pwt_norway_oil, retailrocket, dunnhumby, truus, movielens")
+    try:
+        loader = DATASET_BUILDERS[dataset_name]
+    except KeyError as exc:
+        available = ", ".join(DATASET_BUILDERS.keys())
+        raise ValueError(f"Unknown dataset '{dataset_name}'. Available datasets: {available}") from exc
+    return loader(datasets_path)
 
 
 def _load_smoking_dataset(datasets_path: str) -> Tuple[pd.DataFrame, pd.DataFrame, pd.DataFrame]:
     """Load smoking dataset - California smoking ban (1988)"""
+    _require_pyreadr("smoking")
     result = pyreadr.read_r(f'{datasets_path}smoking.rda')
     df = list(result.values())[0]
     
@@ -217,6 +209,7 @@ def _load_smoking_dataset(datasets_path: str) -> Tuple[pd.DataFrame, pd.DataFram
 
 def _load_basque_dataset(datasets_path: str) -> Tuple[pd.DataFrame, pd.DataFrame, pd.DataFrame]:
     """Load Basque dataset - Basque Country GDP (1975)"""
+    _require_pyreadr("basque")
     result = pyreadr.read_r(f'{datasets_path}basque.rda')
     df = list(result.values())[0]
     
@@ -271,6 +264,7 @@ def _load_german_reunification_dataset(datasets_path: str) -> Tuple[pd.DataFrame
 
 def _load_texas_dataset(datasets_path: str) -> Tuple[pd.DataFrame, pd.DataFrame, pd.DataFrame]:
     """Load Texas dataset - Texas prison reform (1993)"""
+    _require_pyreadr("texas")
     result = pyreadr.read_r(f'{datasets_path}texas.rda')
     df = list(result.values())[0]
     
@@ -444,6 +438,27 @@ def _load_movielens_dataset(datasets_path: str) -> Tuple[pd.DataFrame, None, Non
     Y_df = create_y_dataframe(df, index_col="movie_id", column_col="day", value_col="count").fillna(0)
     
     return Y_df, None, None
+
+
+DATASET_BUILDERS: Dict[str, Callable[[str], Tuple[pd.DataFrame, Optional[pd.DataFrame], Optional[pd.DataFrame]]]] = {
+    "smoking": _load_smoking_dataset,
+    "basque": _load_basque_dataset,
+    "german_reunification": _load_german_reunification_dataset,
+    "texas": _load_texas_dataset,
+    "pwt_spain_eu": _load_pwt_spain_eu_dataset,
+    "pwt_chile_trade": _load_pwt_chile_trade_dataset,
+    "pwt_korea_democracy": _load_pwt_korea_democracy_dataset,
+    "pwt_norway_oil": _load_pwt_norway_oil_dataset,
+    "retailrocket": _load_retailrocket_dataset,
+    "dunnhumby": _load_dunnhumby_dataset,
+    "truus": _load_truus_dataset,
+    "movielens": _load_movielens_dataset,
+}
+
+
+def available_datasets() -> Tuple[str, ...]:
+    """Return the supported dataset names."""
+    return tuple(DATASET_BUILDERS.keys())
 
 
 # Example usage
