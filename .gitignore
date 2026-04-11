@@ -156,6 +156,10 @@ cython_debug/
 # Sphinx build output
 docs/tmp/
 
+# Semi-synthetic experiment outputs
+src/causaltensor/semi_synthetic_experiments/results/*/
+src/causaltensor/semi_synthetic_experiments/results/*/*.csv
+
 # OS files
 .DS_Store
 tests/.DS_Store
