@@ -153,7 +153,7 @@ class OLSSCPanelSolver(PanelSolver):
         for i, cu in enumerate(self.control_units):
             Y1_s = self.Y0[:,i].reshape((T,))
             # create a synthetic control for eahc control unit using other control units
-            _, tau_s = self.ols_inference(Y1_s, np.hstack((self.Y0[:, :i], self.Y0[:, i+1:]))) 
+            _, tau_s, _, _ = self.ols_inference(Y1_s, np.hstack((self.Y0[:, :i], self.Y0[:, i+1:]))) 
             individual_te_control.append([cu, tau_s])
         # rank treatment effects for both treatment and control units based on magnitude of tretament effect
         sorted_te = sorted(self.individual_te + individual_te_control, key=lambda x: abs(x[1]), reverse=True)

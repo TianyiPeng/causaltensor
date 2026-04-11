@@ -11,6 +11,7 @@ def generate_Z(pattern_tuple = ['adaptive'], M0 = 0):
             Z = adpative_treatment_pattern(a, b, M0)
     
         if (pattern_tuple[0] == 'iid'):
+            n1, n2 = M0.shape
             p_treat = np.random.rand()*0.5
             Z = np.random.rand(n1, n2) <= p_treat
 
@@ -107,6 +108,6 @@ def stagger_adoption(m1, m2, M):
     #Z[treat_units, m2:] = 1
     return Z
 
-if (__name__ == 'main'):
+if (__name__ == '__main__'):
     M = np.zeros((5, 5))
     print(simultaneous_adoption(2, 2, M))

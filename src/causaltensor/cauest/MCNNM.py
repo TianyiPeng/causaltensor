@@ -150,11 +150,16 @@ class MCNNMPanelSolver(PanelSolver):
                 return res
             res = res_new
             l = l / coef
+        return res
 
-    def solve_with_cross_validation(self, O=None, K=2, list_l = []):
+    def solve_with_cross_validation(self, O=None, K=2, list_l=None):
         """
         Implement the K-fold cross validation in https://arxiv.org/pdf/1710.10251.pdf
         """
+        if list_l is None:
+            list_l = []
+        else:
+            list_l = list(list_l)
         np.random.seed(42) #for reproducibility
         raw_Omega = self.raw_Omega
         def MSE_validate(res, valid_Ω):
@@ -206,7 +211,7 @@ def MC_NNM_with_suggested_rank(O, Omega, suggest_r=1):
     res = solver.solve_with_suggested_rank(O, suggest_r)
     return res.M, res.row_fixed_effects, res.column_fixed_effects, res.tau
 
-def MC_NNM_with_cross_validation(O, Omega, K=5, list_l = []):
+def MC_NNM_with_cross_validation(O, Omega, K=5, list_l=None):
     solver = MCNNMPanelSolver(Z = 1-Omega)
     res = solver.solve_with_cross_validation(O, K, list_l)
     return res.M, res.row_fixed_effects, res.column_fixed_effects, res.tau
