@@ -90,6 +90,80 @@ class SDIDPanelSolver(PanelSolver):
         self.X = X_resid
         
     
+    def _solve_all_steps(self, X):
+        """Run the four SDID steps on the given panel matrix X.
+
+        Returns (tau, M, feasible) where feasible=False if any CVXPY
+        sub-problem was infeasible (solution value is None).
+        """
+        Nco = len(self.donor_units)
+        Ntr = len(self.treat_units)
+        Tpre = self.starting_time
+        Tpost = X.shape[1] - self.starting_time
+
+        ##Step 1, Compute regularization parameter
+        D = X[self.donor_units, 1:Tpre] - X[self.donor_units, :Tpre-1]
+        D_bar = np.mean(D)
+        z_square = np.mean((D - D_bar)**2) * (np.sqrt(Ntr * Tpost))
+
+        ##Step 2, Compute w^{sdid}
+        w = cp.Variable(Nco)
+        w0 = cp.Variable(1)
+        mean_treat = np.mean(X[self.treat_units, :Tpre], axis=0)
+        prob = cp.Problem(
+            cp.Minimize(
+                cp.sum_squares(w0 + X[self.donor_units, :Tpre].T @ w - mean_treat)
+                + z_square * Tpre * cp.sum_squares(w)),
+            [np.eye(Nco) @ w >= 0, np.ones(Nco).T @ w == 1])
+        prob.solve()
+
+        if w.value is None:
+            return None, None, False
+
+        w_sdid = np.zeros(X.shape[0])
+        w_sdid[self.donor_units] = w.value
+        w_sdid[self.treat_units] = 1.0 / Ntr
+
+        ##Step 3, Compute l^{sdid}
+        l = cp.Variable(Tpre)
+        l0 = cp.Variable(1)
+        mean_treat = np.mean(X[self.donor_units, Tpre:], axis=1)
+        prob = cp.Problem(
+            cp.Minimize(
+                cp.sum_squares(l0 + X[self.donor_units, :Tpre] @ l - mean_treat)),
+            [np.eye(Tpre) @ l >= 0, np.ones(Tpre).T @ l == 1])
+        prob.solve()
+
+        if l.value is None:
+            return None, None, False
+
+        l_sdid = np.zeros(X.shape[1])
+        l_sdid[:Tpre] = l.value
+        l_sdid[Tpre:] = 1.0 / Tpost
+
+        ##Step 4, Compute SDID estimator
+        n1 = X.shape[0]
+        n2 = X.shape[1]
+        weights = w_sdid.reshape((n1, 1)) @ l_sdid.reshape((1, n2))
+
+        a = np.zeros((n1, 1))
+        b = np.zeros((n2, 1))
+        tau = 0
+        one_row = np.ones((1, n2))
+        one_col = np.ones((n1, 1))
+        for _ in range(1000):
+            a_new = np.sum((X - tau*self.Z - one_col.dot(b.T))*weights, axis=1).reshape((n1, 1)) / np.sum(weights, axis=1).reshape((n1, 1))
+            b_new = np.sum((X - tau*self.Z - a.dot(one_row))*weights, axis=0).reshape((n2, 1)) / np.sum(weights, axis=0).reshape((n2, 1))
+            if (np.sum((b_new - b)**2) < 1e-7 * np.sum(b**2) and
+                    np.sum((a_new - a)**2) < 1e-7 * np.sum(a**2)):
+                break
+            a = a_new
+            b = b_new
+            M = a.dot(one_row) + one_col.dot(b.T)
+            tau = np.sum(self.Z * (X - M) * weights) / np.sum(self.Z * weights)
+
+        return tau, M, True
+
     def fit(self):
 
         if self.X_cov is not None:
@@ -100,100 +174,20 @@ class SDIDPanelSolver(PanelSolver):
             if (i not in self.treat_units):
                 self.donor_units.append(i)
 
-        Nco = len(self.donor_units)
-        Ntr = len(self.treat_units)
-        Tpre = self.starting_time
-        Tpost = self.X.shape[1] - self.starting_time
-        
-        ##Step 1, Compute regularization parameter
+        tau, M, feasible = self._solve_all_steps(self.X)
 
-        D = self.X[self.donor_units, 1:self.starting_time] - self.X[self.donor_units, :self.starting_time-1]
-        D_bar = np.mean(D)
-        z_square = np.mean((D - D_bar)**2) * (np.sqrt(Ntr * Tpost))
+        if not feasible:
+            # Rescale to unit std to improve CVXPY numerical conditioning,
+            # then unscale tau and M back to the original units.
+            scale = np.nanstd(self.X)
+            if scale == 0:
+                scale = 1.0
+            tau_scaled, M_scaled, feasible = self._solve_all_steps(self.X / scale)
+            if feasible:
+                tau = tau_scaled * scale
+                M = M_scaled * scale
 
-        ##Step 2, Compute w^{sdid}
-
-        w = cp.Variable(Nco)
-        w0 = cp.Variable(1)
-        G = np.eye(Nco)
-        A = np.ones(Nco)
-        #G @ w >= 0
-        #A.T @ w == 1
-
-        mean_treat = np.mean(self.X[self.treat_units, :Tpre], axis = 0)
-
-        ## solving linear regression with constraints
-        prob = cp.Problem(
-            cp.Minimize(
-                cp.sum_squares(
-                    w0+self.X[self.donor_units, :Tpre].T @ w - mean_treat)
-                + z_square * Tpre * cp.sum_squares(w)),
-                        [G @ w >= 0, A.T @ w == 1])
-        prob.solve()
-        #print("\nThe optimal value is", prob.value) 
-        #print("A solution w is")
-        #print(w.value)
-
-        w_sdid = np.zeros(self.X.shape[0]) 
-        w_sdid[self.donor_units] = w.value
-        w_sdid[self.treat_units] = 1.0 / Ntr
-
-        ##Step 3, Compute l^{sdid}
-        l = cp.Variable(Tpre)
-        l0 = cp.Variable(1)
-        G = np.eye(Tpre)
-        A = np.ones(Tpre)
-        #G @ w >= 0
-        #A.T @ w == 1
-
-        mean_treat = np.mean(self.X[self.donor_units, Tpre:], axis = 1)
-        #print(mean_treat)
-        #print(mean_treat.shape)
-
-        prob = cp.Problem(
-            cp.Minimize(
-                cp.sum_squares(
-                    l0+self.X[self.donor_units, :Tpre] @ l - mean_treat)),
-            [G @ l >= 0, A.T @ l == 1])
-        prob.solve()
-        #breakpoint()
-        #print("\nThe optimal value is", prob.value) 
-        #print("A solution w is")
-        #print(l.value)
-
-        l_sdid = np.zeros(self.X.shape[1]) 
-        l_sdid[:Tpre] = l.value
-        l_sdid[Tpre:] = 1.0 / Tpost
-
-        ##Step 4, Compute SDID estimator
-        #tau = w_sdid.T @ O @ l_sdid
-
-
-        n1 = self.X.shape[0]
-        n2 = self.X.shape[1]
-
-        weights = w_sdid.reshape((self.X.shape[0], 1)) @ l_sdid.reshape((1, self.X.shape[1]))
-
-        a = np.zeros((n1, 1))
-        b = np.zeros((n2, 1))
-        tau = 0
-
-        one_row = np.ones((1, n2))
-        one_col = np.ones((n1, 1))
-        converged = False
-        for T1 in range(1000):
-            a_new = np.sum((self.X-tau*self.Z-one_col.dot(b.T))*weights, axis=1).reshape((n1, 1)) / np.sum(weights, axis=1).reshape((n1, 1))
-            b_new = np.sum((self.X-tau*self.Z-a.dot(one_row))*weights, axis=0).reshape((n2, 1)) / np.sum(weights, axis=0).reshape((n2, 1))
-            if (np.sum((b_new - b)**2) < 1e-7 * np.sum(b**2) and
-                np.sum((a_new - a)**2) < 1e-7 * np.sum(a**2)):
-                converged = True
-                break
-            a = a_new
-            b = b_new
-            M = a.dot(one_row)+one_col.dot(b.T)
-            tau = np.sum(self.Z*(self.X-M)*weights)/np.sum(self.Z*weights)
-
-        res = SDIDResult(baseline = M, tau = tau)
+        res = SDIDResult(baseline=M, tau=tau)
         return res
     
 # backward compatibility

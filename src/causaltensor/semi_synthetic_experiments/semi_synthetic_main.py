@@ -353,8 +353,8 @@ def main(dataset_name="smoking"):
     treat_start_years = [Y_df.columns.get_loc(treatment_start_year)]
     
     # Configuration
-    n_trials = 10
-    treatment_levels = [0.2, 0.1, 0.05, 0.01]
+    n_trials = 3
+    treatment_levels = [0.2, 0.1, 0.05, 0.01][:1]
     
     # Methods to test: dict mapping method names to valid patterns
     # None means use default (all methods with their valid patterns)
