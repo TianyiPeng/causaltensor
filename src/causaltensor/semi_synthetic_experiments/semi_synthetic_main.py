@@ -7,6 +7,7 @@ from causaltensor.cauest.DID import DID
 from causaltensor.cauest.SDID import SDID
 from causaltensor.cauest.RobustSyntheticControl import robust_synthetic_control
 from causaltensor.cauest.OLSSyntheticControl import ols_synthetic_control
+from causaltensor.cauest.CovariancePCA import covariance_PCA
 from causaltensor.semi_synthetic_experiments.semi_synthetic_utils import *
 from causaltensor.semi_synthetic_experiments.treatment_patterns import *
 from causaltensor.datasets.dataset_loader import load_dataset
@@ -82,6 +83,8 @@ def get_tau_from_method(method_name, O_syn, Z):
             _, tau_hat = ols_synthetic_control(O_syn.T, Z.T)
         elif method_name == 'RobustSyntheticControl':
             _, tau_hat = robust_synthetic_control(O_syn, Z)
+        elif method_name == 'CovariancePCA':
+            _, tau_hat = covariance_PCA(O_syn, Z, suggest_r=-1)
         else:
             raise ValueError(f"Unknown method: {method_name}")
         return tau_hat
@@ -128,6 +131,7 @@ def run_semi_synthetic_experiment(O, treated_states, treat_start_years,
         methods = {
             'DC_PR_auto_rank': ['IID', 'Block', 'Staggered', 'Adaptive'],
             'MC_NNM_CV': ['IID', 'Block', 'Staggered', 'Adaptive'],
+            'CovariancePCA': ['IID', 'Block', 'Staggered', 'Adaptive'],
             'DID': ['Block', 'Staggered'],  # DID typically works with simple treatment patterns
             'SDID': ['Block', 'Staggered'],
             'SC': ['Block'],  #TODO: Add stagger
@@ -334,6 +338,7 @@ def main(dataset_name="smoking", max_units=200, max_time=None, seed=0):
     4. Compares performance of different causal inference methods:
        - DC_PR_auto_rank: Debiased Convex Panel Regression (auto rank)
        - MC_NNM_CV: Matrix Completion with Nuclear Norm (cross-validation)
+       - CovariancePCA: Covariance PCA (Xiong & Pelger; rank via CV)
        - DID: Difference-in-Differences
        - SDID: Synthetic Difference-in-Differences
        - SC: Synthetic Control (OLS)
