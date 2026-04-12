@@ -11,37 +11,43 @@ from causaltensor.semi_synthetic_experiments.semi_synthetic_utils import *
 from causaltensor.semi_synthetic_experiments.treatment_patterns import *
 from causaltensor.datasets.dataset_loader import load_dataset
 
-#TODO: Derive this from treatment matrix Z. This will help us include retail datasets
-def extract_treatment_info(dataset_name):
+def extract_treatment_info_from_Z(Y_df, Z_df):
     """
-    Extract treatment information (treated entity and treatment start year) for each dataset.
-    
+    Derive treated states and treatment start times as integer indices from Z_df.
+
+    Works for any dataset that provides a treatment matrix, including datasets
+    with multiple treated units or staggered adoption.
+
     Parameters
     ----------
-    dataset_name : str
-        Name of the dataset
-        
+    Y_df : pd.DataFrame
+        Outcome panel (entity × time).
+    Z_df : pd.DataFrame
+        Binary treatment indicator panel (same shape as Y_df); 1 = treated.
+
     Returns
     -------
-    tuple
-        (treated_entity, treatment_start_year)
+    treated_states : list of int
+        Row integer positions in Y_df.values that are ever treated.
+    treat_start_years : list of int
+        Column integer positions of the first treatment period for each
+        treated state (in the same order as treated_states).
+
+    Returns
+    -------
+    treated_states : list of int
+        Empty list if Z_df is None or all zeros (no observed treatment),
+        meaning the whole panel is used as the untreated baseline.
+    treat_start_years : list of int
+        Empty list when treated_states is empty.
     """
-    treatment_info = {
-        'smoking': ('California', 1988),
-        'basque': ('Basque Country (Pais Vasco)', 1975),
-        'german_reunification': ('West Germany', 1990),
-        'texas': ('Texas', 1993),
-        #TODO: Check why SDID fails for all PWT datasets
-        'pwt_spain_eu': ('Spain', 1986),
-        'pwt_chile_trade': ('Chile', 1976),
-        'pwt_korea_democracy': ('Republic of Korea', 1988),
-        'pwt_norway_oil': ('Norway', 1971)
-    }
-    
-    if dataset_name not in treatment_info:
-        raise ValueError(f"Unknown dataset: {dataset_name}. Available datasets: {list(treatment_info.keys())}")
-    
-    return treatment_info[dataset_name]
+    if Z_df is None or not Z_df.values.any():
+        return [], []
+    Z = Z_df.values
+    treated_mask = Z.any(axis=1)
+    treated_states = list(np.where(treated_mask)[0])
+    treat_start_years = [int(np.argmax(Z[i, :])) for i in treated_states]
+    return treated_states, treat_start_years
 
 
 def get_tau_from_method(method_name, O_syn, Z):
@@ -312,18 +318,20 @@ def run_experiments(O, treated_states, treat_start_years, treatment_levels, base
 
 
 
-def main(dataset_name="smoking"):
+def main(dataset_name="smoking", max_units=200, max_time=None, seed=0):
     """
     Main function to run the semi-synthetic experiments.
     
     This function:
     1. Loads the specified dataset using dataset_loader
-    2. Runs experiments with all methods across different:
+    2. Optionally subsamples large panels (see max_units / max_time) so that
+       experiments finish in reasonable time on retail-scale datasets
+    3. Runs experiments with all methods across different:
        - Treatment patterns (IID, Block, Staggered, Adaptive)
        - Treatment levels (0.2, 0.1, 0.05, 0.01)
        - Baseline types (control vs pre-treatment)
        for multiple trials
-    3. Compares performance of different causal inference methods:
+    4. Compares performance of different causal inference methods:
        - DC_PR_auto_rank: Debiased Convex Panel Regression (auto rank)
        - MC_NNM_CV: Matrix Completion with Nuclear Norm (cross-validation)
        - DID: Difference-in-Differences
@@ -334,9 +342,15 @@ def main(dataset_name="smoking"):
     Parameters
     ----------
     dataset_name : str, default="smoking"
-        Name of the dataset to load. Available datasets:
-        smoking, basque, german_reunification, texas, pwt_spain_eu, 
-        pwt_chile_trade, pwt_korea_democracy, pwt_norway_oil
+        Name of the dataset to load.
+    max_units : int or None, default=200
+        Maximum number of units (rows) to use. If the panel has more rows,
+        a random subsample is drawn (keeping all real treated units).
+        Set to None to use the full panel.
+    max_time : int or None, default=None
+        Maximum number of time periods (columns) to use. None means no limit.
+    seed : int, default=0
+        Random seed for subsampling reproducibility.
     """
     # Load dataset
     print(f"Loading dataset: {dataset_name}")
@@ -345,12 +359,27 @@ def main(dataset_name="smoking"):
     # Convert to numpy array for compatibility with existing code
     O = Y_df.values
     
-    # Extract treatment information
-    treated_entity, treatment_start_year = extract_treatment_info(dataset_name)
-    
-    # Find treated state index and treatment start year index
-    treated_states = [Y_df.index.get_loc(treated_entity)]
-    treat_start_years = [Y_df.columns.get_loc(treatment_start_year)]
+    # Derive treatment info directly from Z_df (works for any dataset with a
+    # treatment matrix, including multi-unit and staggered adoption designs)
+    treated_states, treat_start_years = extract_treatment_info_from_Z(Y_df, Z_df)
+
+    # Subsample large panels so experiments finish in reasonable time.
+    # treat_start_years is expressed in column positions within the full O;
+    # subsampling rows doesn't change column indices so no remapping needed.
+    if (max_units is not None and O.shape[0] > max_units) or \
+       (max_time is not None and O.shape[1] > max_time):
+        rng_sub = np.random.default_rng(seed)
+        O, treated_states = subsample_panel(
+            O, treated_states, rng_sub, max_units=max_units, max_time=max_time
+        )
+        print(
+            f"Panel subsampled to {O.shape[0]} units x {O.shape[1]} time periods "
+            f"(max_units={max_units}, max_time={max_time})"
+        )
+
+    # Human-readable labels for printing
+    treated_entities = Y_df.index[treated_states].tolist() if treated_states else []
+    treat_start_labels = Y_df.columns[treat_start_years].tolist() if treat_start_years else []
     
     # Configuration
     n_trials = 3
@@ -369,34 +398,41 @@ def main(dataset_name="smoking"):
     print("Semi-Synthetic Causal Inference Experiments - Comparison Study")
     print("="*80)
     print(f"Dataset: {dataset_name} (shape: {O.shape})")
-    print(f"Treated entity: {treated_entity} (index: {treated_states[0]})")
-    print(f"Treatment start year: {treatment_start_year} (index: {treat_start_years[0]})")
+    print(f"Treated entities: {treated_entities} (indices: {treated_states})")
+    print(f"Treatment start: {treat_start_labels} (indices: {treat_start_years})")
     print(f"Treatment levels: {treatment_levels}")
     print(f"Number of trials per method/pattern: {n_trials}")
     print("="*80)
     print()
     
-    # Run experiments for both baseline types
+    # Run control-baseline experiments (always available)
     results_control, agg_control = run_experiments(
         O, treated_states, treat_start_years, treatment_levels, 
         "control", methods, n_trials, dataset_name
     )
-    
-    print("\n" + "="*80 + "\n")
-    
-    results_pretreatment, agg_pretreatment = run_experiments(
-        O, treated_states, treat_start_years, treatment_levels, 
-        "pre-treatment", methods, n_trials, dataset_name
-    )
-    
+
+    output = {'control': {'detailed': results_control, 'aggregated': agg_control}}
+
+    # Pre-treatment baseline requires a known treatment start; skip for
+    # datasets with no observed treatment (treat_start_years is empty).
+    if treat_start_years:
+        print("\n" + "="*80 + "\n")
+        results_pretreatment, agg_pretreatment = run_experiments(
+            O, treated_states, treat_start_years, treatment_levels, 
+            "pre-treatment", methods, n_trials, dataset_name
+        )
+        output['pre-treatment'] = {
+            'detailed': results_pretreatment,
+            'aggregated': agg_pretreatment,
+        }
+    else:
+        print("\nSkipping pre-treatment baseline: no observed treatment in this dataset.")
+
     print("\n" + "="*80)
     print("All experiments completed!")
     print("="*80)
-    
-    return {
-        'control': {'detailed': results_control, 'aggregated': agg_control},
-        'pre-treatment': {'detailed': results_pretreatment, 'aggregated': agg_pretreatment}
-    }
+
+    return output
  
  
 if __name__ == "__main__":
