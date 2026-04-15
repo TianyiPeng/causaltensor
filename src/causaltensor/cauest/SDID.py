@@ -148,14 +148,18 @@ class SDIDPanelSolver(PanelSolver):
 
         a = np.zeros((n1, 1))
         b = np.zeros((n2, 1))
-        tau = 0
+        tau = 0.0
         one_row = np.ones((1, n2))
         one_col = np.ones((n1, 1))
+        M = np.zeros((n1, n2))
         for _ in range(1000):
             a_new = np.sum((X - tau*self.Z - one_col.dot(b.T))*weights, axis=1).reshape((n1, 1)) / np.sum(weights, axis=1).reshape((n1, 1))
             b_new = np.sum((X - tau*self.Z - a.dot(one_row))*weights, axis=0).reshape((n2, 1)) / np.sum(weights, axis=0).reshape((n2, 1))
             if (np.sum((b_new - b)**2) < 1e-7 * np.sum(b**2) and
                     np.sum((a_new - a)**2) < 1e-7 * np.sum(a**2)):
+                a, b = a_new, b_new
+                M = a.dot(one_row) + one_col.dot(b.T)
+                tau = np.sum(self.Z * (X - M) * weights) / np.sum(self.Z * weights)
                 break
             a = a_new
             b = b_new
@@ -179,13 +183,19 @@ class SDIDPanelSolver(PanelSolver):
         if not feasible:
             # Rescale to unit std to improve CVXPY numerical conditioning,
             # then unscale tau and M back to the original units.
-            scale = np.nanstd(self.X)
-            if scale == 0:
+            scale = float(np.nanstd(self.X))
+            if not (np.isfinite(scale) and scale > 0):
                 scale = 1.0
-            tau_scaled, M_scaled, feasible = self._solve_all_steps(self.X / scale)
-            if feasible:
+            tau_scaled, M_scaled, feasible_retry = self._solve_all_steps(self.X / scale)
+            if feasible_retry:
                 tau = tau_scaled * scale
                 M = M_scaled * scale
+            else:
+                raise RuntimeError(
+                    "SDID failed: CVXPY returned no feasible solution for both the "
+                    "original outcomes and a variance-normalized rescaling. "
+                    "Check treatment timing, panel scales, and pre/post support."
+                )
 
         res = SDIDResult(baseline=M, tau=tau)
         return res

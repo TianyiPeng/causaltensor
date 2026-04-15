@@ -37,14 +37,14 @@ def sample_treatment_parameters(n, T, rng):
     
     return m1, m2, lookback_a, duration_b
 
-def build_baseline_M(O, treated_states, treat_start_years, type = 'control'):
-    if type == 'control':
+def build_baseline_M(O, treated_states, treat_start_years, baseline_type='control'):
+    if baseline_type == 'control':
         # Create boolean mask from list of treated state indices.
         # If treated_states is empty (no observed treatment), M = all of O.
         treated_mask = np.zeros(O.shape[0], dtype=bool)
         treated_mask[treated_states] = True
         M = O[~treated_mask, :]
-    elif type == 'pre-treatment':
+    elif baseline_type == 'pre-treatment':
         if not treat_start_years:
             raise ValueError(
                 "Cannot build a pre-treatment baseline when treat_start_years "
@@ -52,9 +52,30 @@ def build_baseline_M(O, treated_states, treat_start_years, type = 'control'):
                 "baseline_type='control' instead."
             )
         M = O[:, :min(treat_start_years)]
+    else:
+        raise ValueError(
+            f"baseline_type must be 'control' or 'pre-treatment', got {baseline_type!r}"
+        )
 
     return M, M.shape[0], M.shape[1]
 
+
+def filter_treated_for_pretreatment_baseline(treated_states, treat_start_years):
+    """
+    Keep parallel lists aligned to treated units with treatment start index > 0.
+
+    Pre-treatment baseline uses M = O[:, :min(starts)]; if any unit has start 0,
+    that minimum is 0 and the pre-period is empty. Restricting to starts > 0
+    avoids an empty slice while still using all pre-treatment periods common to
+    the included units.
+    """
+    ts = []
+    ys = []
+    for r, t in zip(treated_states, treat_start_years):
+        if t > 0:
+            ts.append(r)
+            ys.append(t)
+    return ts, ys
 
 
 def inject_treatment_centered(M, Z, *,
@@ -116,56 +137,3 @@ def inject_treatment_centered(M, Z, *,
     assert np.isclose(att_true, tau_star)
 
     return O, tau_star
-
-
-def subsample_panel(O, treated_states, rng, max_units=None, max_time=None):
-    """
-    Randomly subsample an (n x T) panel to at most max_units rows and
-    max_time columns, always keeping any real treated rows intact.
-
-    Parameters
-    ----------
-    O : np.ndarray  (n x T)
-    treated_states : list of int
-        Row indices that must be kept (real treated units).
-    rng : np.random.Generator
-    max_units : int or None
-        Cap on number of rows. None means no limit.
-    max_time : int or None
-        Cap on number of columns. None means no limit.
-
-    Returns
-    -------
-    O_sub : np.ndarray
-    treated_states_sub : list of int
-        Treated-unit indices remapped into the subsampled row space.
-    """
-    n, T = O.shape
-    row_idx = np.arange(n)
-
-    if max_units is not None and n > max_units:
-        if len(treated_states) < max_units:
-            # Preserve all treated units and fill the rest with random controls.
-            control_idx = np.array([i for i in row_idx if i not in treated_states])
-            n_control_keep = max_units - len(treated_states)
-            sampled_control = rng.choice(control_idx, size=n_control_keep, replace=False)
-            row_idx = np.concatenate([sorted(treated_states), np.sort(sampled_control)])
-        else:
-            # More treated units than the cap (e.g. retail promo datasets) —
-            # sample uniformly from all rows; treated_states lose their special status.
-            row_idx = np.sort(rng.choice(n, size=max_units, replace=False))
-
-    col_idx = np.arange(T, dtype=int)
-    if max_time is not None and T > max_time:
-        col_idx = np.sort(rng.choice(T, size=max_time, replace=False))
-
-    O_sub = O[np.ix_(row_idx.astype(int), col_idx)]
-
-    # Remap treated_states to new row positions (only those that survived sampling)
-    row_idx_list = list(row_idx)
-    treated_set = set(treated_states)
-    treated_states_sub = [
-        row_idx_list.index(i) for i in row_idx_list if i in treated_set
-    ]
-
-    return O_sub, treated_states_sub

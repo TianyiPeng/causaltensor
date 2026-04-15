@@ -72,7 +72,7 @@ class TestSyntheticClass:
         O, Z = create_dataset_factory()
         tau = SDID(O, Z)
         error = np.abs(self.tau-tau)/self.tau
-        assert error <= 0.05
+        assert error <= 0.02
 
 
     def test_synthetic_control(self, create_dataset_factory):

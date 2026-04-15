@@ -101,9 +101,6 @@ def covariance_PCA(O, Z, Omega=None, suggest_r=-1, return_U=False):
         raise ValueError("No control observations: (1-Z)*Omega is all zero.")
 
     n_obs = int(np.sum(omega_fit))
-    if n_obs == 0:
-        raise ValueError("Fitting mask has no observed entries.")
-
     O_ob = O * omega_fit
     denom = omega_fit.dot(omega_fit.T)
     denom = np.where(np.abs(denom) < 1e-15, 1.0, denom)

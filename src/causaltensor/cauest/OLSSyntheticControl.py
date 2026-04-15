@@ -58,6 +58,10 @@ class OLSSCPanelSolver(PanelSolver):
     """
 
     def __init__(self, Y, Z, X=None, pval=False):
+        if pval and X is not None:
+            raise ValueError(
+                "pval=True is only supported when X is None (no covariates)."
+            )
         self.Y = Y
         self.X = X
         (
@@ -206,11 +210,6 @@ class OLSSCPanelSolver(PanelSolver):
 
     def fit(self):
         """Estimate counterfactuals and (optional) unit-level placebo p-values."""
-        if self.pval and self.X is not None:
-            raise ValueError(
-                "permutation-based p-values (pval=True) are only implemented when X is None."
-            )
-
         T = len(self.Y1)
         V = []
         weights = []

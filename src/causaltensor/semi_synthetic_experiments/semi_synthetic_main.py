@@ -322,20 +322,18 @@ def run_experiments(O, treated_states, treat_start_years, treatment_levels, base
 
 
 
-def main(dataset_name="smoking", max_units=200, max_time=None, seed=0):
+def main(dataset_name="smoking"):
     """
     Main function to run the semi-synthetic experiments.
     
     This function:
     1. Loads the specified dataset using dataset_loader
-    2. Optionally subsamples large panels (see max_units / max_time) so that
-       experiments finish in reasonable time on retail-scale datasets
-    3. Runs experiments with all methods across different:
+    2. Runs experiments with all methods across different:
        - Treatment patterns (IID, Block, Staggered, Adaptive)
        - Treatment levels (0.2, 0.1, 0.05, 0.01)
        - Baseline types (control vs pre-treatment)
        for multiple trials
-    4. Compares performance of different causal inference methods:
+    3. Compares performance of different causal inference methods:
        - DC_PR_auto_rank: Debiased Convex Panel Regression (auto rank)
        - MC_NNM_CV: Matrix Completion with Nuclear Norm (cross-validation)
        - CovariancePCA: Covariance PCA (Xiong & Pelger; rank via CV)
@@ -348,14 +346,6 @@ def main(dataset_name="smoking", max_units=200, max_time=None, seed=0):
     ----------
     dataset_name : str, default="smoking"
         Name of the dataset to load.
-    max_units : int or None, default=200
-        Maximum number of units (rows) to use. If the panel has more rows,
-        a random subsample is drawn (keeping all real treated units).
-        Set to None to use the full panel.
-    max_time : int or None, default=None
-        Maximum number of time periods (columns) to use. None means no limit.
-    seed : int, default=0
-        Random seed for subsampling reproducibility.
     """
     # Load dataset
     print(f"Loading dataset: {dataset_name}")
@@ -367,20 +357,6 @@ def main(dataset_name="smoking", max_units=200, max_time=None, seed=0):
     # Derive treatment info directly from Z_df (works for any dataset with a
     # treatment matrix, including multi-unit and staggered adoption designs)
     treated_states, treat_start_years = extract_treatment_info_from_Z(Y_df, Z_df)
-
-    # Subsample large panels so experiments finish in reasonable time.
-    # treat_start_years is expressed in column positions within the full O;
-    # subsampling rows doesn't change column indices so no remapping needed.
-    if (max_units is not None and O.shape[0] > max_units) or \
-       (max_time is not None and O.shape[1] > max_time):
-        rng_sub = np.random.default_rng(seed)
-        O, treated_states = subsample_panel(
-            O, treated_states, rng_sub, max_units=max_units, max_time=max_time
-        )
-        print(
-            f"Panel subsampled to {O.shape[0]} units x {O.shape[1]} time periods "
-            f"(max_units={max_units}, max_time={max_time})"
-        )
 
     # Human-readable labels for printing
     treated_entities = Y_df.index[treated_states].tolist() if treated_states else []
@@ -420,18 +396,32 @@ def main(dataset_name="smoking", max_units=200, max_time=None, seed=0):
 
     # Pre-treatment baseline requires a known treatment start; skip for
     # datasets with no observed treatment (treat_start_years is empty).
-    if treat_start_years:
+    # Use only treated units with start > 0 so min(start) >= 1 and O[:, :min]
+    # is non-empty (units with start 0 have no pre-treatment columns in-panel).
+    treated_pt, starts_pt = filter_treated_for_pretreatment_baseline(
+        treated_states, treat_start_years
+    )
+    if treat_start_years and starts_pt:
         print("\n" + "="*80 + "\n")
+        print(
+            "Pre-treatment baseline: using treated units with start index > 0 "
+            f"({len(starts_pt)} of {len(treat_start_years)})."
+        )
         results_pretreatment, agg_pretreatment = run_experiments(
-            O, treated_states, treat_start_years, treatment_levels, 
+            O, treated_pt, starts_pt, treatment_levels,
             "pre-treatment", methods, n_trials, dataset_name
         )
         output['pre-treatment'] = {
             'detailed': results_pretreatment,
             'aggregated': agg_pretreatment,
         }
-    else:
+    elif not treat_start_years:
         print("\nSkipping pre-treatment baseline: no observed treatment in this dataset.")
+    else:
+        print(
+            "\nSkipping pre-treatment baseline: no treated units with treatment "
+            "start index > 0 (needed for a non-empty pre-period slice)."
+        )
 
     print("\n" + "="*80)
     print("All experiments completed!")

@@ -91,6 +91,7 @@ def robust_synthetic_control(O, Z, suggest_r=-1):
         (no pre-period), singular values are empty, or ``suggest_r`` is invalid.
     """
     treat_units = np.where(np.any(Z == 1, axis=1))[0]
+    treat_set = set(treat_units.tolist())
 
     if len(treat_units) == 0:
         raise ValueError("No treated units found in Z (need at least one row with some Z==1).")
@@ -101,7 +102,7 @@ def robust_synthetic_control(O, Z, suggest_r=-1):
     if starting_time == 0:
         raise ValueError("Treatment starts at t=0 for at least one treated unit; need a positive pre-treatment window.")
 
-    donor_units = [i for i in range(O.shape[0]) if i not in treat_units]
+    donor_units = [i for i in range(O.shape[0]) if i not in treat_set]
 
     if len(donor_units) == 0:
         raise ValueError("No donor (never-treated) units available.")
