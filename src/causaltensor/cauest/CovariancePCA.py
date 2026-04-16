@@ -7,6 +7,8 @@ Fitting matches MC-NNM: effective mask ``Omega_fit = (1 - Z) ⊙ Omega_all`` wit
 ``tau = sum(Z * (O - M)) / sum(Z)`` (Readme Step 3).
 """
 
+import warnings
+
 import numpy as np
 
 
@@ -86,6 +88,22 @@ def covariance_PCA(O, Z, Omega=None, suggest_r=-1, return_U=False):
     """
     O = np.asarray(O, dtype=float)
     Z = np.asarray(Z, dtype=float)
+
+    # Deprecation guard: the old API passed an observation mask Ω (mostly 1s)
+    # as the second positional arg.  Treatment matrices are typically sparse,
+    # so a dense Z (>50% ones) with no explicit Omega is a strong signal that
+    # the caller is using the old convention.
+    if Omega is None and Z.size > 0 and Z.mean() > 0.5:
+        warnings.warn(
+            "Z has >50% entries equal to 1 and no Omega was passed. "
+            "If Z is an observation mask from the old API, note that the "
+            "second argument is now the *treatment* matrix (sparse, mostly 0s). "
+            "Pass the observation mask as Omega instead: "
+            "covariance_PCA(O, Z=treatment, Omega=mask).",
+            DeprecationWarning,
+            stacklevel=2,
+        )
+
     if Z.shape != O.shape:
         raise ValueError("Z must have the same shape as O.")
     if np.sum(Z) <= 0:
