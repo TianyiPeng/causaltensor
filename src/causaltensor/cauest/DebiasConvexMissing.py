@@ -1,7 +1,9 @@
 import numpy as np
 import copy
 
-def convex_algorithm_with_Omega(O, Omega, Z, l, suggest = [], eps = 1e-3, debug = False):
+def convex_algorithm_with_Omega(O, Omega, Z, l, suggest=None, eps = 1e-3, debug = False):
+    if suggest is None:
+        suggest = [np.zeros_like(O), 0]
 
     M = suggest[0]
     tau = suggest[1]
@@ -30,7 +32,10 @@ def convex_algorithm_with_Omega(O, Omega, Z, l, suggest = [], eps = 1e-3, debug 
             print(tau)
     return M, tau, 'fail'
 
-def convex_algorithm_with_Omega_with_fixed_effects(O, Omega, Z, l, suggest = [], eps = 1e-3, debug = False):
+def convex_algorithm_with_Omega_with_fixed_effects(O, Omega, Z, l, suggest=None, eps = 1e-3, debug = False):
+    if suggest is None:
+        n1, n2 = O.shape
+        suggest = [np.zeros_like(O), np.zeros((n1, 1)), np.zeros((n2, 1)), 0]
 
     M = suggest[0]
     a = suggest[1]

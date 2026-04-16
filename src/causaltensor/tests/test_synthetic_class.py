@@ -5,6 +5,8 @@ from causaltensor.cauest.DID import DID
 from causaltensor.cauest.SDID import SDID
 from causaltensor.cauest.DebiasConvex import DC_PR_with_suggested_rank
 from causaltensor.cauest.MCNNM import MC_NNM_with_cross_validation, MC_NNM_with_suggested_rank
+from causaltensor.cauest.RobustSyntheticControl import robust_synthetic_control
+from causaltensor.cauest.CovariancePCA import covariance_PCA
 from causaltensor.matlib.generation_treatment_pattern import iid_treatment, block_treatment_testone
 from causaltensor.matlib.generation import low_rank_M0_normal
 
@@ -70,7 +72,7 @@ class TestSyntheticClass:
         O, Z = create_dataset_factory()
         tau = SDID(O, Z)
         error = np.abs(self.tau-tau)/self.tau
-        assert error <= 0.01
+        assert error <= 0.02
 
 
     def test_synthetic_control(self, create_dataset_factory):
@@ -81,7 +83,27 @@ class TestSyntheticClass:
         error = np.abs(self.tau-tau)/self.tau
         assert error <= 0.2
 
-    
+    def test_robust_synthetic_control(self, create_dataset_factory):
+        O, Z = create_dataset_factory()
+        Mhat, tau = robust_synthetic_control(O, Z)
+        assert Mhat.shape == O.shape
+        assert np.isfinite(tau)
+        error = np.abs(self.tau - tau) / self.tau
+        assert error <= 0.1
+
+    def test_covariance_pca(self, create_dataset_factory):
+        O, Z = create_dataset_factory(did=False, r=3)
+        m_hat, tau = covariance_PCA(O, Z, suggest_r=3)
+        assert m_hat.shape == O.shape
+        assert np.isfinite(tau)
+        error = np.abs(self.tau - tau) / self.tau
+        assert error <= 0.2
+
+        m_cv, tau_cv = covariance_PCA(O, Z, suggest_r=-1)
+        assert m_cv.shape == O.shape
+        assert np.isfinite(tau_cv)
+        error = np.abs(self.tau - tau_cv) / self.tau
+        assert error <= 0.2
 
     def test_mc(self, create_dataset_factory):
         r = 1

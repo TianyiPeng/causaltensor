@@ -37,17 +37,45 @@ def sample_treatment_parameters(n, T, rng):
     
     return m1, m2, lookback_a, duration_b
 
-def build_baseline_M(O, treated_states, treat_start_years, type = 'control'):
-    if type == 'control':
-        # Create boolean mask from list of treated state indices
+def build_baseline_M(O, treated_states, treat_start_years, baseline_type='control'):
+    if baseline_type == 'control':
+        # Create boolean mask from list of treated state indices.
+        # If treated_states is empty (no observed treatment), M = all of O.
         treated_mask = np.zeros(O.shape[0], dtype=bool)
         treated_mask[treated_states] = True
         M = O[~treated_mask, :]
-    elif type == 'pre-treatment':
+    elif baseline_type == 'pre-treatment':
+        if not treat_start_years:
+            raise ValueError(
+                "Cannot build a pre-treatment baseline when treat_start_years "
+                "is empty (dataset has no observed treatment). Use "
+                "baseline_type='control' instead."
+            )
         M = O[:, :min(treat_start_years)]
+    else:
+        raise ValueError(
+            f"baseline_type must be 'control' or 'pre-treatment', got {baseline_type!r}"
+        )
 
     return M, M.shape[0], M.shape[1]
 
+
+def filter_treated_for_pretreatment_baseline(treated_states, treat_start_years):
+    """
+    Keep parallel lists aligned to treated units with treatment start index > 0.
+
+    Pre-treatment baseline uses M = O[:, :min(starts)]; if any unit has start 0,
+    that minimum is 0 and the pre-period is empty. Restricting to starts > 0
+    avoids an empty slice while still using all pre-treatment periods common to
+    the included units.
+    """
+    ts = []
+    ys = []
+    for r, t in zip(treated_states, treat_start_years):
+        if t > 0:
+            ts.append(r)
+            ys.append(t)
+    return ts, ys
 
 
 def inject_treatment_centered(M, Z, *,

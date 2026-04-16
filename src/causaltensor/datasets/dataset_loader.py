@@ -7,7 +7,10 @@ Each dataset returns Y_df (outcome matrix), and optionally Z_df (treatment matri
 
 import pandas as pd
 import numpy as np
+import logging
 from typing import Optional, Dict, Any, Tuple, Callable
+logger = logging.getLogger(__name__)
+
 
 try:
     import pyreadr  # type: ignore
@@ -62,11 +65,25 @@ def create_y_dataframe(df: pd.DataFrame, index_col: str, column_col: str, value_
         if rows_if_remove_entities <= rows_if_remove_times:
             # Remove entities (rows) - loses fewer data points
             df = df[~df[index_col].isin(entities_with_nan)]
-            print(f"Removed {len(entities_with_nan)} entities ({pct_entities_with_nan:.1%}) with NaN values, losing {rows_if_remove_entities}/{total_rows} data points ({rows_if_remove_entities/total_rows:.1%})")
+            logger.info(
+                "Removed %d entities (%.1f%%) with NaN values, losing %d/%d data points (%.1f%%).",
+                len(entities_with_nan),
+                pct_entities_with_nan * 100,
+                rows_if_remove_entities,
+                total_rows,
+                (rows_if_remove_entities / total_rows) * 100,
+            )
         else:
             # Remove time periods (columns) - loses fewer data points
             df = df[~df[column_col].isin(times_with_nan)]
-            print(f"Removed {len(times_with_nan)} time periods ({pct_times_with_nan:.1%}) with NaN values, losing {rows_if_remove_times}/{total_rows} data points ({rows_if_remove_times/total_rows:.1%})")
+            logger.info(
+                "Removed %d time periods (%.1f%%) with NaN values, losing %d/%d data points (%.1f%%).",
+                len(times_with_nan),
+                pct_times_with_nan * 100,
+                rows_if_remove_times,
+                total_rows,
+                (rows_if_remove_times / total_rows) * 100,
+            )
     
     Y_df = df.pivot(index=index_col, columns=column_col, values=value_col)
     return Y_df
@@ -254,10 +271,14 @@ def _load_german_reunification_dataset(datasets_path: str) -> Tuple[pd.DataFrame
         additional_cols={'gdp1960': 1960, 'gdp1970': 1970, 'gdp1980': 1980, 'gdp1985': 1985}
     )
     
-    # Add investment columns (these are pre-existing in the original data)
-    X_df['invest60'] = df[~df['invest60'].isna()]['invest60'].values
-    X_df['invest70'] = df[~df['invest70'].isna()]['invest70'].values
-    X_df['invest80'] = df[~df['invest80'].isna()]['invest80'].values
+    # Add investment columns with index-safe alignment by country.
+    invest_cols = ['invest60', 'invest70', 'invest80']
+    invest_df = (
+        df[['country'] + invest_cols]
+        .groupby('country', as_index=True)
+        .first()
+    )
+    X_df[invest_cols] = invest_df.reindex(X_df.index)[invest_cols]
     
     return Y_df, Z_df, X_df
 
@@ -371,7 +392,7 @@ def _load_pwt_korea_democracy_dataset(datasets_path: str) -> Tuple[pd.DataFrame,
         covariate_cols=cols_to_avg,
         avg_start_year=1980,
         avg_end_year=1987,
-        additional_cols={'rgdpe1980': 1980, 'rgdpe1988': 1985}
+        additional_cols={'rgdpe1980': 1980, 'rgdpe1988': 1988}
     )
     
     return Y_df, Z_df, X_df

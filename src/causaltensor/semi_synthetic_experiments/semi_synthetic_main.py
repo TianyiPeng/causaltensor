@@ -7,41 +7,48 @@ from causaltensor.cauest.DID import DID
 from causaltensor.cauest.SDID import SDID
 from causaltensor.cauest.RobustSyntheticControl import robust_synthetic_control
 from causaltensor.cauest.OLSSyntheticControl import ols_synthetic_control
+from causaltensor.cauest.CovariancePCA import covariance_PCA
 from causaltensor.semi_synthetic_experiments.semi_synthetic_utils import *
 from causaltensor.semi_synthetic_experiments.treatment_patterns import *
 from causaltensor.datasets.dataset_loader import load_dataset
 
-#TODO: Derive this from treatment matrix Z. This will help us include retail datasets
-def extract_treatment_info(dataset_name):
+def extract_treatment_info_from_Z(Y_df, Z_df):
     """
-    Extract treatment information (treated entity and treatment start year) for each dataset.
-    
+    Derive treated states and treatment start times as integer indices from Z_df.
+
+    Works for any dataset that provides a treatment matrix, including datasets
+    with multiple treated units or staggered adoption.
+
     Parameters
     ----------
-    dataset_name : str
-        Name of the dataset
-        
+    Y_df : pd.DataFrame
+        Outcome panel (entity × time).
+    Z_df : pd.DataFrame
+        Binary treatment indicator panel (same shape as Y_df); 1 = treated.
+
     Returns
     -------
-    tuple
-        (treated_entity, treatment_start_year)
+    treated_states : list of int
+        Row integer positions in Y_df.values that are ever treated.
+    treat_start_years : list of int
+        Column integer positions of the first treatment period for each
+        treated state (in the same order as treated_states).
+
+    Returns
+    -------
+    treated_states : list of int
+        Empty list if Z_df is None or all zeros (no observed treatment),
+        meaning the whole panel is used as the untreated baseline.
+    treat_start_years : list of int
+        Empty list when treated_states is empty.
     """
-    treatment_info = {
-        'smoking': ('California', 1988),
-        'basque': ('Basque Country (Pais Vasco)', 1975),
-        'german_reunification': ('West Germany', 1990),
-        'texas': ('Texas', 1993),
-        #TODO: Check why SDID fails for all PWT datasets
-        'pwt_spain_eu': ('Spain', 1986),
-        'pwt_chile_trade': ('Chile', 1976),
-        'pwt_korea_democracy': ('Republic of Korea', 1988),
-        'pwt_norway_oil': ('Norway', 1971)
-    }
-    
-    if dataset_name not in treatment_info:
-        raise ValueError(f"Unknown dataset: {dataset_name}. Available datasets: {list(treatment_info.keys())}")
-    
-    return treatment_info[dataset_name]
+    if Z_df is None or not Z_df.values.any():
+        return [], []
+    Z = Z_df.values
+    treated_mask = Z.any(axis=1)
+    treated_states = list(np.where(treated_mask)[0])
+    treat_start_years = [int(np.argmax(Z[i, :])) for i in treated_states]
+    return treated_states, treat_start_years
 
 
 def get_tau_from_method(method_name, O_syn, Z):
@@ -76,6 +83,8 @@ def get_tau_from_method(method_name, O_syn, Z):
             _, tau_hat = ols_synthetic_control(O_syn.T, Z.T)
         elif method_name == 'RobustSyntheticControl':
             _, tau_hat = robust_synthetic_control(O_syn, Z)
+        elif method_name == 'CovariancePCA':
+            _, tau_hat = covariance_PCA(O_syn, Z, suggest_r=-1)
         else:
             raise ValueError(f"Unknown method: {method_name}")
         return tau_hat
@@ -122,6 +131,7 @@ def run_semi_synthetic_experiment(O, treated_states, treat_start_years,
         methods = {
             'DC_PR_auto_rank': ['IID', 'Block', 'Staggered', 'Adaptive'],
             'MC_NNM_CV': ['IID', 'Block', 'Staggered', 'Adaptive'],
+            'CovariancePCA': ['IID', 'Block', 'Staggered', 'Adaptive'],
             'DID': ['Block', 'Staggered'],  # DID typically works with simple treatment patterns
             'SDID': ['Block', 'Staggered'],
             'SC': ['Block'],  #TODO: Add stagger
@@ -326,6 +336,7 @@ def main(dataset_name="smoking"):
     3. Compares performance of different causal inference methods:
        - DC_PR_auto_rank: Debiased Convex Panel Regression (auto rank)
        - MC_NNM_CV: Matrix Completion with Nuclear Norm (cross-validation)
+       - CovariancePCA: Covariance PCA (Xiong & Pelger; rank via CV)
        - DID: Difference-in-Differences
        - SDID: Synthetic Difference-in-Differences
        - SC: Synthetic Control (OLS)
@@ -334,9 +345,7 @@ def main(dataset_name="smoking"):
     Parameters
     ----------
     dataset_name : str, default="smoking"
-        Name of the dataset to load. Available datasets:
-        smoking, basque, german_reunification, texas, pwt_spain_eu, 
-        pwt_chile_trade, pwt_korea_democracy, pwt_norway_oil
+        Name of the dataset to load.
     """
     # Load dataset
     print(f"Loading dataset: {dataset_name}")
@@ -345,15 +354,16 @@ def main(dataset_name="smoking"):
     # Convert to numpy array for compatibility with existing code
     O = Y_df.values
     
-    # Extract treatment information
-    treated_entity, treatment_start_year = extract_treatment_info(dataset_name)
-    
-    # Find treated state index and treatment start year index
-    treated_states = [Y_df.index.get_loc(treated_entity)]
-    treat_start_years = [Y_df.columns.get_loc(treatment_start_year)]
+    # Derive treatment info directly from Z_df (works for any dataset with a
+    # treatment matrix, including multi-unit and staggered adoption designs)
+    treated_states, treat_start_years = extract_treatment_info_from_Z(Y_df, Z_df)
+
+    # Human-readable labels for printing
+    treated_entities = Y_df.index[treated_states].tolist() if treated_states else []
+    treat_start_labels = Y_df.columns[treat_start_years].tolist() if treat_start_years else []
     
     # Configuration
-    n_trials = 1
+    n_trials = 3
     treatment_levels = [0.2, 0.1, 0.05, 0.01][:1]
     
     # Methods to test: dict mapping method names to valid patterns
@@ -369,34 +379,55 @@ def main(dataset_name="smoking"):
     print("Semi-Synthetic Causal Inference Experiments - Comparison Study")
     print("="*80)
     print(f"Dataset: {dataset_name} (shape: {O.shape})")
-    print(f"Treated entity: {treated_entity} (index: {treated_states[0]})")
-    print(f"Treatment start year: {treatment_start_year} (index: {treat_start_years[0]})")
+    print(f"Treated entities: {treated_entities} (indices: {treated_states})")
+    print(f"Treatment start: {treat_start_labels} (indices: {treat_start_years})")
     print(f"Treatment levels: {treatment_levels}")
     print(f"Number of trials per method/pattern: {n_trials}")
     print("="*80)
     print()
     
-    # Run experiments for both baseline types
+    # Run control-baseline experiments (always available)
     results_control, agg_control = run_experiments(
         O, treated_states, treat_start_years, treatment_levels, 
         "control", methods, n_trials, dataset_name
     )
-    
-    print("\n" + "="*80 + "\n")
-    
-    results_pretreatment, agg_pretreatment = run_experiments(
-        O, treated_states, treat_start_years, treatment_levels, 
-        "pre-treatment", methods, n_trials, dataset_name
+
+    output = {'control': {'detailed': results_control, 'aggregated': agg_control}}
+
+    # Pre-treatment baseline requires a known treatment start; skip for
+    # datasets with no observed treatment (treat_start_years is empty).
+    # Use only treated units with start > 0 so min(start) >= 1 and O[:, :min]
+    # is non-empty (units with start 0 have no pre-treatment columns in-panel).
+    treated_pt, starts_pt = filter_treated_for_pretreatment_baseline(
+        treated_states, treat_start_years
     )
-    
+    if treat_start_years and starts_pt:
+        print("\n" + "="*80 + "\n")
+        print(
+            "Pre-treatment baseline: using treated units with start index > 0 "
+            f"({len(starts_pt)} of {len(treat_start_years)})."
+        )
+        results_pretreatment, agg_pretreatment = run_experiments(
+            O, treated_pt, starts_pt, treatment_levels,
+            "pre-treatment", methods, n_trials, dataset_name
+        )
+        output['pre-treatment'] = {
+            'detailed': results_pretreatment,
+            'aggregated': agg_pretreatment,
+        }
+    elif not treat_start_years:
+        print("\nSkipping pre-treatment baseline: no observed treatment in this dataset.")
+    else:
+        print(
+            "\nSkipping pre-treatment baseline: no treated units with treatment "
+            "start index > 0 (needed for a non-empty pre-period slice)."
+        )
+
     print("\n" + "="*80)
     print("All experiments completed!")
     print("="*80)
-    
-    return {
-        'control': {'detailed': results_control, 'aggregated': agg_control},
-        'pre-treatment': {'detailed': results_pretreatment, 'aggregated': agg_pretreatment}
-    }
+
+    return output
  
  
 if __name__ == "__main__":

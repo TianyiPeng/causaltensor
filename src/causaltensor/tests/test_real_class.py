@@ -5,6 +5,8 @@ from causaltensor.cauest.DID import DID
 from causaltensor.cauest.SDID import SDID
 from causaltensor.cauest.DebiasConvex import DC_PR_auto_rank, DC_PR_with_suggested_rank
 from causaltensor.cauest.MCNNM import MC_NNM_with_cross_validation, MC_NNM_with_suggested_rank
+from causaltensor.cauest.RobustSyntheticControl import robust_synthetic_control
+from causaltensor.cauest.CovariancePCA import covariance_PCA
 import os
 
 np.random.seed(0)
@@ -80,6 +82,21 @@ class TestRealClass:
         assert M.shape == O.shape
         assert tau <= -20 and tau >= -30
         assert np.linalg.matrix_rank(M) == suggest_r
+
+    def test_robust_synthetic_control(self, create_dataset):
+        O, Z, _ = create_dataset
+        Mhat, tau = robust_synthetic_control(O, Z)
+        assert Mhat.shape == O.shape
+        assert np.isfinite(tau)
+        assert tau <= -10 and tau >= -20
+
+    def test_covariance_pca(self, create_dataset):
+        O, Z, _ = create_dataset
+        M, tau = covariance_PCA(O, Z, suggest_r=-1)
+        assert M.shape == O.shape
+        assert np.isfinite(tau)
+        assert tau <= -40 and tau >= -50
+
 
 
 

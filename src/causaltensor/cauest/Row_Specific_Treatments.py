@@ -1,8 +1,8 @@
 import numpy as np
 import copy
 
-def convex_algorithm_row_specific_treatments(O, Omega, Z, l, suggest = [], eps = 1e-3, debug = False):
-    if (len(suggest) == 0):
+def convex_algorithm_row_specific_treatments(O, Omega, Z, l, suggest=None, eps = 1e-3, debug = False):
+    if suggest is None or len(suggest) == 0:
         M = np.zeros_like(O)
         tau = np.zeros((O.shape[0] ,1))
     else:
