@@ -41,12 +41,20 @@ def soft_impute(O, Omega, l, eps=1e-7, M_init=None, max_iter=2000):
     return M_new
 
 class MCNNMResult(Result):
-    def __init__(self, baseline = None, M = None, tau=None, beta=None, row_fixed_effects=None, column_fixed_effects=None, return_tau_scalar=False):
+    def __init__(self, baseline = None, M = None, tau=None, beta=None, row_fixed_effects=None, column_fixed_effects=None,
+                 return_tau_scalar=False, baseline_projection=None, baseline_projected=None,
+                 tau_projected=None, projection_diagnostics=None):
         super().__init__(baseline = baseline, tau = tau, return_tau_scalar = return_tau_scalar)
         self.beta = beta
         self.row_fixed_effects = row_fixed_effects
         self.column_fixed_effects = column_fixed_effects
         self.M = M # the low-rank component of the baseline model
+        self.baseline_raw = baseline
+        self.tau_raw = tau
+        self.baseline_projection = baseline_projection
+        self.baseline_projected = baseline_projected
+        self.tau_projected = tau_projected
+        self.projection_diagnostics = {} if projection_diagnostics is None else projection_diagnostics
 
 class MCNNMPanelSolver(PanelSolver):
     """ 
@@ -87,7 +95,98 @@ class MCNNMPanelSolver(PanelSolver):
         self.FE_beta_solver = FixedEffectPanelSolver(fixed_effects=self.fixed_effects, X=self.X, Omega=self.Omega)
         self.return_tau_scalar = False
 
-    def solve_with_regularizer(self, O=None, l=None, M_init=None, eps=1e-7, max_iter=2000):
+    def fit(
+        self,
+        O=None,
+        suggest_r=None,
+        l=None,
+        K=None,
+        list_l=None,
+        M_init=None,
+        eps=1e-7,
+        max_iter=2000,
+        baseline_projection=None,
+    ):
+        """Fit MC-NNM using the solver implied by the provided arguments.
+
+        Dispatch order is ``suggest_r`` > ``l`` > cross-validation. If neither
+        ``suggest_r`` nor ``l`` is provided, cross-validation is used with
+        ``K=2`` unless another ``K`` is specified.
+
+        Parameters
+        ----------
+        O: 2D numpy array
+            The observation matrix.
+        suggest_r: int or None
+            Suggested rank for ``solve_with_suggested_rank``.
+        l: float or None
+            Nuclear norm regularizer for ``solve_with_regularizer``.
+        K: int or None
+            Number of cross-validation folds for ``solve_with_cross_validation``.
+        list_l: iterable or None
+            Candidate regularizers for cross-validation.
+        M_init: 2D numpy array or None
+            Initial low-rank matrix for ``solve_with_regularizer``.
+        eps: float
+            Convergence threshold for ``solve_with_regularizer``.
+        max_iter: int
+            Maximum iterations for ``solve_with_regularizer``.
+        baseline_projection: {None, "clip_nonnegative"}
+            Optional post-estimation projection for the final baseline. The raw
+            baseline and raw tau remain available as ``res.baseline`` and
+            ``res.tau``; projected companion outputs are attached separately.
+        """
+        if O is None:
+            raise ValueError("O must be provided.")
+
+        if suggest_r is not None:
+            return self.solve_with_suggested_rank(
+                O=O,
+                suggest_r=suggest_r,
+                baseline_projection=baseline_projection,
+            )
+        if l is not None:
+            return self.solve_with_regularizer(
+                O=O,
+                l=l,
+                M_init=M_init,
+                eps=eps,
+                max_iter=max_iter,
+                baseline_projection=baseline_projection,
+            )
+        if K is None:
+            K = 2
+        return self.solve_with_cross_validation(
+            O=O,
+            K=K,
+            list_l=list_l,
+            baseline_projection=baseline_projection,
+        )
+
+    def _project_baseline(self, O, baseline, tau, baseline_projection):
+        if baseline_projection is None:
+            return None, None, {}
+        if baseline_projection != "clip_nonnegative":
+            raise ValueError("baseline_projection must be None or 'clip_nonnegative'.")
+
+        baseline_projected = np.maximum(baseline, 0)
+        tau_projected = np.sum((O - baseline_projected)*self.Z) / np.sum(self.Z)
+        negative_part = np.minimum(baseline, 0)
+        projection_diagnostics = {
+            "baseline_projection": baseline_projection,
+            "baseline_min_raw": float(np.min(baseline)),
+            "baseline_min_projected": float(np.min(baseline_projected)),
+            "negative_fraction_raw": float(np.mean(baseline < 0)),
+            "clipped_fraction": float(np.mean(baseline < 0)),
+            "clipped_mass": float(np.sum(-negative_part)),
+            "max_clipped_magnitude": float(np.max(-negative_part)),
+            "tau_raw": float(tau),
+            "tau_projected": float(tau_projected),
+            "tau_shift": float(tau_projected - tau),
+        }
+        return baseline_projected, tau_projected, projection_diagnostics
+
+    def solve_with_regularizer(self, O=None, l=None, M_init=None, eps=1e-7, max_iter=2000, baseline_projection=None):
         """ Solve the matrix completion problem with nuclear norm regularizer and fixed effects
         Parameters
         ----------
@@ -101,6 +200,9 @@ class MCNNMPanelSolver(PanelSolver):
             Convergence threshold.
         max_iter: int
             Maximum number of iterations.
+        baseline_projection: {None, "clip_nonnegative"}
+            Optional post-estimation projection for the final baseline. This does
+            not alter the fitted low-rank/fixed-effect decomposition.
         Returns
         -------
         res: Result
@@ -109,10 +211,15 @@ class MCNNMPanelSolver(PanelSolver):
             res.row_fixed_effects: 2D numpy array (n, 1)
             res.column_fixed_effects: 2D numpy array (m, 1)
             res.beta: 1D numpy array (p, ) if X is not None
-            res.baseline_model: 2D numpy array
+            res.baseline: 2D numpy array
                 The estimated baseline model (M+ai+bj+beta*X).
+            res.baseline_projected: 2D numpy array or None
+                The projected non-negative baseline when
+                ``baseline_projection="clip_nonnegative"``.
             res.tau: float
                 The estimated treatment effect.
+            res.tau_projected: float or None
+                The treatment effect recalculated from ``res.baseline_projected``.
         """
         M = M_init
         if M is None:
@@ -127,32 +234,42 @@ class MCNNMPanelSolver(PanelSolver):
 
         baseline = res.fitted_value + M
         tau = np.sum((O - baseline)*self.Z) / np.sum(self.Z)
+        baseline_projected, tau_projected, projection_diagnostics = self._project_baseline(
+            O=O,
+            baseline=baseline,
+            tau=tau,
+            baseline_projection=baseline_projection,
+        )
         res_new = MCNNMResult(baseline = baseline, M = M, tau = tau, 
                           beta = res.beta,
                           row_fixed_effects = res.row_fixed_effects, 
                           column_fixed_effects = res.column_fixed_effects,
-                          return_tau_scalar = self.return_tau_scalar)
+                          return_tau_scalar = self.return_tau_scalar,
+                          baseline_projection=baseline_projection,
+                          baseline_projected=baseline_projected,
+                          tau_projected=tau_projected,
+                          projection_diagnostics=projection_diagnostics)
         return res_new
 
-    def solve_with_suggested_rank(self, O=None, suggest_r=1):
+    def solve_with_suggested_rank(self, O=None, suggest_r=1, baseline_projection=None):
         suggest_r = min(suggest_r, O.shape[0])
         suggest_r = min(suggest_r, O.shape[1])
         coef = 1.1
         u, s, vh = np.linalg.svd(O*self.Omega, full_matrices = False)
         l = s[1]*coef    
 
-        res = self.solve_with_regularizer(O=O, l=l)
+        res = self.solve_with_regularizer(O=O, l=l, baseline_projection=baseline_projection)
         l = l / coef
         T = 2000
         for i in range(T):
-            res_new = self.solve_with_regularizer(O=O, l=l, M_init=res.M)
+            res_new = self.solve_with_regularizer(O=O, l=l, M_init=res.M, baseline_projection=baseline_projection)
             if (np.linalg.matrix_rank(res_new.M) > suggest_r): # we hope to minimize the l while keeping the rank of M to be suggest_r
                 return res
             res = res_new
             l = l / coef
         return res
 
-    def solve_with_cross_validation(self, O=None, K=2, list_l=None):
+    def solve_with_cross_validation(self, O=None, K=2, list_l=None, baseline_projection=None):
         """
         Implement the K-fold cross validation in https://arxiv.org/pdf/1710.10251.pdf
         """
@@ -196,7 +313,7 @@ class MCNNMPanelSolver(PanelSolver):
                 M =res.M
         index = error.sum(axis=0).argmin()
         l_opt = list_l[index]
-        res = self.solve_with_regularizer(O=O, l=l_opt)
+        res = self.solve_with_regularizer(O=O, l=l_opt, baseline_projection=baseline_projection)
         return res
 
 
