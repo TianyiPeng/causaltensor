@@ -1,4 +1,5 @@
 import numpy as np
+import warnings
 import causaltensor.matlib.util as util
 from causaltensor.matlib.util import transform_to_3D
 from causaltensor.cauest.result import Result
@@ -6,10 +7,14 @@ from causaltensor.cauest.panel_solver import PanelSolver
 from causaltensor.cauest.panel_solver import FixedEffectPanelSolver
 
 class DCResult(Result):
-    def __init__(self, baseline = None, tau=None, std=None, return_tau_scalar=False):
+    def __init__(self, baseline = None, tau=None, std=None, return_tau_scalar=False,
+                 inference_valid=True, non_negative_method=None, diagnostics=None):
         super().__init__(baseline = baseline, tau = tau, return_tau_scalar = return_tau_scalar)
         self.std = std
         self.M = baseline # for backward compatability
+        self.inference_valid = inference_valid
+        self.non_negative_method = non_negative_method
+        self.diagnostics = {} if diagnostics is None else diagnostics
 
 class DCPanelSolver(PanelSolver):
     def __init__(self, Z=None, O=None, suggest_r=None):
@@ -28,6 +33,8 @@ class DCPanelSolver(PanelSolver):
         self.Z = transform_to_3D(Z) ## Z is (n1 x n2 x num_treat) numpy array
         self.suggest_R = suggest_r
         self.small_index, self.X, self.Xinv = self.prepare_OLS()
+        self._non_negative_warning_emitted = False
+        self.last_non_negative_diagnostics = None
 
 
     def prepare_OLS(self):
@@ -38,7 +45,34 @@ class DCPanelSolver(PanelSolver):
         Xinv = np.linalg.inv(X.T @ X)
         return small_index, X, Xinv  
 
+    def _validate_method_non_neg(self, method_non_neg):
+        if method_non_neg is None:
+            return None
+        if method_non_neg != "svd":
+            raise ValueError(
+                "method_non_neg must be None or 'svd'. The 'nnmf' option is "
+                "not supported for DebiasConvex because it changes the model "
+                "family and is not currently compatible with the debiasing and "
+                "standard-error formulas."
+            )
+        return method_non_neg
+
+    def _warn_if_non_negative_method(self, method_non_neg):
+        if method_non_neg is None or self._non_negative_warning_emitted:
+            return
+        warnings.warn(
+            "DebiasConvex non-negative modes are experimental point-estimation "
+            "heuristics. They modify the low-rank geometry used by the debiasing "
+            "and standard-error formulas, so standard errors are not reported as "
+            "inference-valid when method_non_neg is used.",
+            RuntimeWarning,
+            stacklevel=3,
+        )
+        self._non_negative_warning_emitted = True
+
     def fit(self, suggest_r=None, auto_rank=True, spectrum_cut=0.002, method='auto', method_non_neg=None):
+        method_non_neg = self._validate_method_non_neg(method_non_neg)
+        self._warn_if_non_negative_method(method_non_neg)
         if suggest_r is not None:
             M, tau, std = self.DC_PR_with_suggested_rank(suggest_r=suggest_r, method=method, method_non_neg=method_non_neg)
         elif auto_rank:
@@ -46,7 +80,20 @@ class DCPanelSolver(PanelSolver):
         else:
             raise ValueError("Either suggest_r or auto_rank must be provided")
 
-        res = DCResult(baseline=M, tau=tau, std=std)
+        inference_valid = method_non_neg is None
+        diagnostics = None
+        if method_non_neg is not None:
+            std = None
+            diagnostics = self.last_non_negative_diagnostics
+
+        res = DCResult(
+            baseline=M,
+            tau=tau,
+            std=std,
+            inference_valid=inference_valid,
+            non_negative_method=method_non_neg,
+            diagnostics=diagnostics,
+        )
         return res
 
     def solve_tau(self, O):
@@ -55,6 +102,8 @@ class DCPanelSolver(PanelSolver):
         return tau 
 
     def als(self, tau, eps, l=None, r=None, method_non_neg=None):
+        method_non_neg = self._validate_method_non_neg(method_non_neg)
+        self._warn_if_non_negative_method(method_non_neg)
         for T in range(2000):
             M_new = self.O - np.tensordot(self.Z, tau,  axes=([2], [0]))
             #### SVD to find low-rank M
@@ -74,9 +123,48 @@ class DCPanelSolver(PanelSolver):
 
             #### Check convergence
             if (np.linalg.norm(tau_new - tau) < eps * np.linalg.norm(tau)):
-                return M, tau
+                return M, tau_new
             tau = tau_new
         return M, tau
+
+    def _projected_treatment_design(self, u, vh):
+        X = np.zeros((self.Z.shape[0]*self.Z.shape[1], self.Z.shape[2]))
+        for k in np.arange(self.Z.shape[2]):
+            X[:, k] = util.remove_tangent_space_component(u, vh, self.Z[:, :, k]).reshape(-1)
+        return X
+
+    def non_negative_diagnostics(self, M, tau, E, method_non_neg):
+        u, s, vh = util.svd_fast(M)
+        rank = int(np.linalg.matrix_rank(M))
+        stable_rank = 0.0
+        if len(s) > 0 and s[0] > 0:
+            stable_rank = float(np.sum(s**2) / (s[0]**2))
+
+        X = self._projected_treatment_design(u[:, :rank], vh[:rank, :])
+        XtX = X.T @ X
+        eigvals = np.linalg.eigvalsh((XtX + XtX.T) / 2)
+        max_eig = float(np.max(eigvals)) if eigvals.size else np.nan
+        min_eig = float(np.min(eigvals)) if eigvals.size else np.nan
+        if eigvals.size == 0 or min_eig <= 1e-12:
+            condition_number = np.inf
+        else:
+            condition_number = float(max_eig / min_eig)
+
+        negative_part = np.minimum(M, 0)
+        return {
+            "method_non_neg": method_non_neg,
+            "inference_valid": False,
+            "std_available": False,
+            "baseline_min": float(np.min(M)),
+            "negative_fraction": float(np.mean(M < 0)),
+            "negative_mass": float(np.sum(-negative_part)),
+            "max_negative_magnitude": float(np.max(-negative_part)),
+            "rank": rank,
+            "stable_rank": stable_rank,
+            "projected_design_min_eigenvalue": min_eig,
+            "projected_design_condition_number": condition_number,
+            "residual_frobenius_norm": float(np.linalg.norm(E)),
+        }
     
     def debias(self, M, tau, l):
         u, s, vh = util.svd_fast(M)
@@ -131,6 +219,8 @@ class DCPanelSolver(PanelSolver):
         tau : (num_treat,) float numpy array
             Estimated treatment effects.
         """
+        method_non_neg = self._validate_method_non_neg(method_non_neg)
+        self._warn_if_non_negative_method(method_non_neg)
         if initial_tau is None:
             tau = np.zeros(self.Z.shape[2])
         else:
@@ -160,6 +250,8 @@ class DCPanelSolver(PanelSolver):
         tau : (num_treat,) float numpy array
             Estimated treatment effects.
         """
+        method_non_neg = self._validate_method_non_neg(method_non_neg)
+        self._warn_if_non_negative_method(method_non_neg)
         if initial_tau is None:
             tau = np.zeros(self.Z.shape[2])
         else:
@@ -177,6 +269,8 @@ class DCPanelSolver(PanelSolver):
             :param Z: intervention matrix
         
         """
+        method_non_neg = self._validate_method_non_neg(method_non_neg)
+        self._warn_if_non_negative_method(method_non_neg)
         ## determine pre_tau
         pre_tau = self.solve_tau(self.O)
 
@@ -213,15 +307,29 @@ class DCPanelSolver(PanelSolver):
                 M = M1
                 tau = tau1
 
-        CI = self.panel_regression_CI(M, self.O-M-np.tensordot(self.Z, tau,  axes=([2], [0])))
-        standard_deviation = np.sqrt(np.diag(CI))
+        E = self.O-M-np.tensordot(self.Z, tau,  axes=([2], [0]))
+        if method_non_neg is not None:
+            standard_deviation = None
+            self.last_non_negative_diagnostics = self.non_negative_diagnostics(
+                M=M,
+                tau=tau,
+                E=E,
+                method_non_neg=method_non_neg,
+            )
+        else:
+            CI = self.panel_regression_CI(M, E)
+            standard_deviation = np.sqrt(np.diag(CI))
         if len(tau) == 1:
+            if standard_deviation is None:
+                return M, tau[0], None
             return M, tau[0], standard_deviation[0]
         else:
             return M, tau, standard_deviation
 
 
     def DC_PR_auto_rank(self, spectrum_cut = 0.002, method='convex', method_non_neg=None):
+        method_non_neg = self._validate_method_non_neg(method_non_neg)
+        self._warn_if_non_negative_method(method_non_neg)
         s = np.linalg.svd(self.O, full_matrices = False, compute_uv=False)
         suggest_r = np.sum(np.cumsum(s**2) / np.sum(s**2) <= 1-spectrum_cut)
         return self.DC_PR_with_suggested_rank(suggest_r = suggest_r, method=method, method_non_neg=method_non_neg)
@@ -247,9 +355,7 @@ class DCPanelSolver(PanelSolver):
         u = u[:, :r]
         vh = vh[:r, :]
 
-        X = np.zeros((self.Z.shape[0]*self.Z.shape[1], self.Z.shape[2]))
-        for k in np.arange(self.Z.shape[2]):
-            X[:, k] = util.remove_tangent_space_component(u, vh, self.Z[:, :, k]).reshape(-1)
+        X = self._projected_treatment_design(u, vh)
 
         A = (np.linalg.inv(X.T@X)@X.T) 
         CI = (A * np.reshape(E**2, -1)) @ A.T
