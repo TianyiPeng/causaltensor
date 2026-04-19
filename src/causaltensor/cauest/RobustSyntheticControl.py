@@ -8,6 +8,9 @@ Convention: ``O`` and ``Z`` are ``(N, T)`` — units × time — consistent with
 
 import numpy as np
 
+from causaltensor.cauest.panel_solver import PanelSolver
+from causaltensor.cauest.result import Result
+
 
 def stagger_pattern_RSC(O, Z, suggest_r=1):
     """
@@ -158,3 +161,55 @@ def robust_synthetic_control(O, Z, suggest_r=-1):
     z_at[treat_units, starting_time:] = 1
     tau = np.sum(z_at * (O - mhat)) / np.sum(z_at)
     return mhat, tau
+
+
+class RSCResult(Result):
+    """Result container for :class:`RSCPanelSolver`."""
+
+    def __init__(self, baseline=None, tau=None):
+        super().__init__(baseline=baseline, tau=tau)
+        self.M = baseline  # fitted counterfactual panel
+
+
+class RSCPanelSolver(PanelSolver):
+    """
+    Robust Synthetic Control estimator.
+
+    Builds a low-rank donor-panel approximation via truncated SVD and projects
+    treated units onto the donor subspace using their pre-treatment periods.
+    Rank ``r`` is either supplied or chosen by pre-period cross-validation.
+
+    Parameters
+    ----------
+    O : ndarray, shape (N, T)
+        Observed outcome panel (units × time).
+    Z : ndarray, shape (N, T)
+        Binary treatment mask (1 = treated).
+    suggest_r : int, optional
+        Fixed SVD rank if ``>= 1``; use ``-1`` (default) for CV.
+
+    Examples
+    --------
+    >>> solver = RSCPanelSolver(O, Z)
+    >>> result = solver.fit()
+    >>> result.tau        # ATT estimate
+    >>> result.baseline   # fitted counterfactual panel
+    """
+
+    def __init__(self, O, Z, suggest_r=-1):
+        self.O = np.asarray(O, dtype=float)
+        self.Z = np.asarray(Z, dtype=float)
+        self.suggest_r = suggest_r
+
+    def fit(self):
+        """
+        Run the RSC algorithm.
+
+        Returns
+        -------
+        RSCResult
+            ``.tau``     — ATT estimate (float)
+            ``.baseline`` / ``.M`` — fitted counterfactual panel (ndarray)
+        """
+        Mhat, tau = robust_synthetic_control(self.O, self.Z, suggest_r=self.suggest_r)
+        return RSCResult(baseline=Mhat, tau=tau)
