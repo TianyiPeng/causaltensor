@@ -177,26 +177,48 @@ def run_real_data_report(
     return pd.concat(frames, ignore_index=True)
 
 
-def format_report_text(df: pd.DataFrame) -> str:
-    """Human-readable summary: dataset blocks with method / tau / status."""
-    lines: List[str] = []
-    for dataset, sub in df.groupby("dataset", sort=False):
-        lines.append(f"## {dataset}")
-        if sub.empty:
-            lines.append("  (no rows)")
-            lines.append("")
-            continue
-        row0 = sub.iloc[0]
-        lines.append(
-            f"  Panel: n={row0['n']}, T={row0['T']}, treated cells={row0.get('n_treated_cells', '')}"
+def print_report_table(df: pd.DataFrame) -> None:
+    """Print tau_hat per dataset/method as an aligned table."""
+    if df.empty:
+        print("(no results)")
+        return
+
+    col_widths = {
+        "dataset": max(len("dataset"), df["dataset"].str.len().max()),
+        "method":  max(len("method"),  df["method"].str.len().max()),
+        "tau_hat": len("tau_hat"),
+        "status":  len("status"),
+    }
+
+    header = (
+        f"{'dataset':<{col_widths['dataset']}}  "
+        f"{'method':<{col_widths['method']}}  "
+        f"{'tau_hat':>{col_widths['tau_hat']}}  "
+        f"{'status':<{col_widths['status']}}"
+    )
+    sep = "-" * len(header)
+
+    print(sep)
+    print(header)
+    print(sep)
+
+    prev_dataset = None
+    for _, r in df.iterrows():
+        if r["dataset"] != prev_dataset:
+            if prev_dataset is not None:
+                print(sep)
+            prev_dataset = r["dataset"]
+        tau = r.get("tau_hat", np.nan)
+        tau_s = f"{tau:.6g}" if pd.notna(tau) else "nan"
+        status = "ok" if r.get("ok") else f"FAIL: {r.get('error', '')}"
+        print(
+            f"{r['dataset']:<{col_widths['dataset']}}  "
+            f"{r['method']:<{col_widths['method']}}  "
+            f"{tau_s:>{col_widths['tau_hat']}}  "
+            f"{status:<{col_widths['status']}}"
         )
-        for _, r in sub.iterrows():
-            status = "ok" if r.get("ok") else f"fail: {r.get('error', '')}"
-            tau = r.get("tau_hat", np.nan)
-            tau_s = f"{tau:.6g}" if pd.notna(tau) else "nan"
-            lines.append(f"    {r['method']}: tau_hat={tau_s}  ({status})")
-        lines.append("")
-    return "\n".join(lines).strip() + "\n"
+
+    print(sep)
 
 
 def save_report(
@@ -244,7 +266,7 @@ def main(argv: Optional[Sequence[str]] = None) -> pd.DataFrame:
     names = args.datasets if args.datasets else None
     df = run_real_data_report(dataset_names=names, datasets_path=args.raw_path)
     save_report(df, output_dir=args.out_dir)
-    print(format_report_text(df))
+    print_report_table(df)
     return df
 
 

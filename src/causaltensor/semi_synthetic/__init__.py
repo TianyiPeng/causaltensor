@@ -25,5 +25,6 @@ Usage
 """
 
 from causaltensor.semi_synthetic.experiment import run_experiment
+from causaltensor.semi_synthetic.aa_test import run_aa_test
 
-__all__ = ["run_experiment"]
+__all__ = ["run_experiment", "run_aa_test"]

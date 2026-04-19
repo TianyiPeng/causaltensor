@@ -25,7 +25,6 @@ import pandas as pd
 
 from causaltensor.semi_synthetic.utils import (
     build_baseline_M,
-    filter_treated_for_pretreatment_baseline,
     inject_treatment_centered,
     print_summary_table,
     sample_treatment_parameters,
@@ -180,19 +179,7 @@ def run_experiment(
         print(f"Treated states: {treated_states}, Treatment start years: {treat_start_years}")
 
     # Build baseline matrix M
-    if baseline_type == "pre-treatment":
-        treated_pt, starts_pt = filter_treated_for_pretreatment_baseline(
-            treated_states, treat_start_years
-        )
-        if not starts_pt:
-            raise ValueError(
-                "baseline_type='pre-treatment' requires at least one treated unit "
-                "with treatment start index > 0. Either adjust Z or use "
-                "baseline_type='control'."
-            )
-        M, n, T = build_baseline_M(O, treated_pt, starts_pt, baseline_type)
-    else:
-        M, n, T = build_baseline_M(O, treated_states, treat_start_years, baseline_type)
+    M, n, T = build_baseline_M(O, treated_states, treat_start_years, baseline_type)
 
     if verbose:
         print(f"Baseline matrix M shape: ({n}, {T})")

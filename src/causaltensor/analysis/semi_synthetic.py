@@ -2,7 +2,6 @@ import pandas as pd
 import numpy as np
 from pathlib import Path
 from causaltensor.semi_synthetic.experiment import run_experiment
-from causaltensor.semi_synthetic.utils import filter_treated_for_pretreatment_baseline
 from causaltensor.utils.common import extract_treatment_info_from_Z
 from causaltensor.datasets.dataset_loader import load_dataset
 
@@ -102,39 +101,8 @@ def run_experiments(O, treated_states, treat_start_years, treatment_levels, base
         verbose=True,
     )
 
-    # Display results summary
-    print("="*80)
-    print(f"Results Summary for Baseline Type: {baseline_type}")
-    print("="*80)
-
     aggregated = results_df.groupby(['method', 'pattern', 'treatment_level'])['error'].agg(['mean', 'std']).reset_index()
     aggregated.columns = ['method', 'pattern', 'treatment_level', 'mean_error', 'std_error']
-
-    pivot_mean = aggregated.pivot_table(
-        values='mean_error',
-        index='method',
-        columns='pattern',
-        aggfunc='mean',
-    )
-    pivot_std = aggregated.pivot_table(
-        values='std_error',
-        index='method',
-        columns='pattern',
-        aggfunc='mean',
-    )
-
-    print("\nAverage Error (Mean ± Std): Method vs Pattern")
-    print("-" * 80)
-    for method in pivot_mean.index:
-        print(f"\n{method}:")
-        for pattern in pivot_mean.columns:
-            mean_val = pivot_mean.loc[method, pattern]
-            std_val = pivot_std.loc[method, pattern]
-            if pd.notna(mean_val):
-                print(f"  {pattern}: {mean_val:.4f} ± {std_val:.4f}")
-            else:
-                print(f"  {pattern}: N/A")
-    print()
 
     # Save detailed results (all trials) to CSV
     _base = Path(__file__).resolve().parent / "results" / "semi_synthetic_data"
@@ -201,31 +169,18 @@ def main(dataset_name="smoking"):
     )
     output = {'control': {'detailed': results_control, 'aggregated': agg_control}}
 
-    treated_pt, starts_pt = filter_treated_for_pretreatment_baseline(
-        treated_states, treat_start_years
-    )
-    if treat_start_years and starts_pt:
+    if treat_start_years:
         print("\n" + "="*80 + "\n")
-        print(
-            "Pre-treatment baseline: using treated units with start index > 0 "
-            f"({len(starts_pt)} of {len(treat_start_years)})."
-        )
         results_pretreatment, agg_pretreatment = run_experiments(
-            O, treated_pt, starts_pt, treatment_levels,
+            O, treated_states, treat_start_years, treatment_levels,
             "pre-treatment", methods, n_trials, dataset_name,
         )
         output['pre-treatment'] = {
             'detailed': results_pretreatment,
             'aggregated': agg_pretreatment,
         }
-    elif not treat_start_years:
-        print("\nSkipping pre-treatment baseline: no observed treatment in this dataset.")
     else:
-        print(
-            "\nSkipping pre-treatment baseline: no treated units with treatment "
-            "start index > 0 (needed for a non-empty pre-period slice)."
-        )
-
+        print("\nSkipping pre-treatment baseline: no observed treatment in this dataset.")
     print("\n" + "="*80)
     print("All experiments completed!")
     print("="*80)

@@ -61,23 +61,6 @@ def build_baseline_M(O, treated_states, treat_start_years, baseline_type='contro
     return M, M.shape[0], M.shape[1]
 
 
-def filter_treated_for_pretreatment_baseline(treated_states, treat_start_years):
-    """
-    Keep parallel lists aligned to treated units with treatment start index > 0.
-
-    Pre-treatment baseline uses M = O[:, :min(starts)]; if any unit has start 0,
-    that minimum is 0 and the pre-period is empty. Restricting to starts > 0
-    avoids an empty slice while still using all pre-treatment periods common to
-    the included units.
-    """
-    ts = []
-    ys = []
-    for r, t in zip(treated_states, treat_start_years):
-        if t > 0:
-            ts.append(r)
-            ys.append(t)
-    return ts, ys
-
 
 def inject_treatment_centered(M, Z, *,
                               treatment_level=0.2,
