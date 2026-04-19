@@ -470,10 +470,10 @@ DATASET_BUILDERS: Dict[str, Callable[[str], Tuple[pd.DataFrame, Optional[pd.Data
     "pwt_chile_trade": _load_pwt_chile_trade_dataset,
     "pwt_korea_democracy": _load_pwt_korea_democracy_dataset,
     "pwt_norway_oil": _load_pwt_norway_oil_dataset,
-    "retailrocket": _load_retailrocket_dataset,
-    "dunnhumby": _load_dunnhumby_dataset,
-    "truus": _load_truus_dataset,
-    "movielens": _load_movielens_dataset,
+    # "retailrocket": _load_retailrocket_dataset,
+    # "dunnhumby": _load_dunnhumby_dataset,
+    # "truus": _load_truus_dataset,
+    # "movielens": _load_movielens_dataset,
 }
 
 

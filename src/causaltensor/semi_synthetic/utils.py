@@ -1,4 +1,5 @@
 import numpy as np
+import pandas as pd
 
 
 def sample_treatment_parameters(n, T, rng):
@@ -88,23 +89,22 @@ def inject_treatment_centered(M, Z, *,
         O = M + (tau* + delta_i + eta_t) ∘ Z
 
     - tau* = mean(M) * treatment_level
-    - delta_i ~ N(0, sigma_unit_scale * tau*)
-    - eta_t   ~ N(0, sigma_time_scale * tau*)
+    - delta_i ~ N(0, sigma_unit_scale * |tau*|)
+    - eta_t   ~ N(0, sigma_time_scale * |tau*|)
     - Both delta_i and eta_t are re-centered (weighted by treated counts) so that
       the ATT over treated cells equals tau*
 
     Returns:
-        O            : observed panel
-        att_true     : ground-truth ATT over treated cells
-        tau_star     : intended average effect
+        O        : observed panel
+        tau_star : intended average effect (ground truth)
     """
     rng = np.random.default_rng(rng)
     n, T = M.shape
 
     # Base effect and heterogeneity scales
     tau_star = np.mean(M) * treatment_level
-    sigma_delta = sigma_unit_scale * tau_star
-    sigma_eta   = sigma_time_scale * tau_star
+    sigma_delta = sigma_unit_scale * abs(tau_star)
+    sigma_eta   = sigma_time_scale * abs(tau_star)
 
     # Draw heterogeneity
     delta_i = rng.normal(0.0, sigma_delta, size=n)   # unit-fixed shock
@@ -137,3 +137,49 @@ def inject_treatment_centered(M, Z, *,
     assert np.isclose(att_true, tau_star)
 
     return O, tau_star
+
+
+def print_summary_table(df: pd.DataFrame) -> None:
+    """Print mean +/- std of relative error grouped by treatment_level / method / pattern."""
+    summary = (
+        df.groupby(["treatment_level", "method", "pattern"])["error"]
+        .agg(mean="mean", std="std")
+        .reset_index()
+    )
+    summary["std"] = summary["std"].fillna(0.0)
+
+    col_widths = {
+        "treatment_level": max(len("treatment_level"), summary["treatment_level"].apply(lambda x: f"{x}").str.len().max()),
+        "method":          max(len("method"),          summary["method"].str.len().max()),
+        "pattern":         max(len("pattern"),         summary["pattern"].str.len().max()),
+        "error":           len("mean_error +/- std"),
+    }
+
+    header = (
+        f"{'treatment_level':<{col_widths['treatment_level']}}  "
+        f"{'method':<{col_widths['method']}}  "
+        f"{'pattern':<{col_widths['pattern']}}  "
+        f"{'mean_error +/- std':>{col_widths['error']}}"
+    )
+    sep = "-" * len(header)
+
+    print("\n=== Summary: mean relative error +/- std across trials ===")
+    print(sep)
+    print(header)
+    print(sep)
+
+    prev_level = None
+    for _, row in summary.iterrows():
+        if row["treatment_level"] != prev_level:
+            if prev_level is not None:
+                print(sep)
+            prev_level = row["treatment_level"]
+        cell = f"{row['mean']:.4f} +/- {row['std']:.4f}"
+        print(
+            f"{str(row['treatment_level']):<{col_widths['treatment_level']}}  "
+            f"{row['method']:<{col_widths['method']}}  "
+            f"{row['pattern']:<{col_widths['pattern']}}  "
+            f"{cell:>{col_widths['error']}}"
+        )
+
+    print(sep)
