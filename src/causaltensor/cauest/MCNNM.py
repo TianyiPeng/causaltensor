@@ -87,6 +87,59 @@ class MCNNMPanelSolver(PanelSolver):
         self.FE_beta_solver = FixedEffectPanelSolver(fixed_effects=self.fixed_effects, X=self.X, Omega=self.Omega)
         self.return_tau_scalar = False
 
+    def fit(
+        self,
+        O=None,
+        suggest_r=None,
+        l=None,
+        K=None,
+        list_l=None,
+        M_init=None,
+        eps=1e-7,
+        max_iter=2000,
+    ):
+        """Fit MC-NNM using the solver implied by the provided arguments.
+
+        Dispatch order is ``suggest_r`` > ``l`` > cross-validation. If neither
+        ``suggest_r`` nor ``l`` is provided, cross-validation is used with
+        ``K=2`` unless another ``K`` is specified.
+
+        Parameters
+        ----------
+        O: 2D numpy array
+            The observation matrix.
+        suggest_r: int or None
+            Suggested rank for ``solve_with_suggested_rank``.
+        l: float or None
+            Nuclear norm regularizer for ``solve_with_regularizer``.
+        K: int or None
+            Number of cross-validation folds for ``solve_with_cross_validation``.
+        list_l: iterable or None
+            Candidate regularizers for cross-validation.
+        M_init: 2D numpy array or None
+            Initial low-rank matrix for ``solve_with_regularizer``.
+        eps: float
+            Convergence threshold for ``solve_with_regularizer``.
+        max_iter: int
+            Maximum iterations for ``solve_with_regularizer``.
+        """
+        if O is None:
+            raise ValueError("O must be provided.")
+
+        if suggest_r is not None:
+            return self.solve_with_suggested_rank(O=O, suggest_r=suggest_r)
+        if l is not None:
+            return self.solve_with_regularizer(
+                O=O,
+                l=l,
+                M_init=M_init,
+                eps=eps,
+                max_iter=max_iter,
+            )
+        if K is None:
+            K = 2
+        return self.solve_with_cross_validation(O=O, K=K, list_l=list_l)
+
     def solve_with_regularizer(self, O=None, l=None, M_init=None, eps=1e-7, max_iter=2000):
         """ Solve the matrix completion problem with nuclear norm regularizer and fixed effects
         Parameters
