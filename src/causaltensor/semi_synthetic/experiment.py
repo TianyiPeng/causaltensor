@@ -30,7 +30,7 @@ from causaltensor.semi_synthetic.utils import (
     sample_treatment_parameters,
 )
 from causaltensor.utils.treatment_patterns import Z_adaptive, Z_block, Z_iid, Z_stagger
-from causaltensor.utils.common import get_tau_from_method
+from causaltensor.utils.common import get_tau_from_method, treated_states_and_starts_from_Z
 
 # Valid pattern and method names (mirrors analysis/semi_synthetic.py defaults)
 VALID_PATTERNS: List[str] = ["IID", "Block", "Staggered", "Adaptive"]
@@ -44,14 +44,6 @@ DEFAULT_METHODS: Dict[str, List[str]] = {
     "SC":              ["Block"],
     "RobustSyntheticControl": ["Block"],
 }
-
-
-def _treated_info_from_Z(Z: np.ndarray):
-    """Derive (treated_states, treat_start_years) from a numpy treatment mask."""
-    treated_mask = Z.any(axis=1)
-    treated_states = list(np.where(treated_mask)[0])
-    treat_start_years = [int(np.argmax(Z[i, :])) for i in treated_states]
-    return treated_states, treat_start_years
 
 
 def _normalise_methods(
@@ -85,6 +77,7 @@ def run_experiment(
     baseline_type: str = "control",
     treatment_levels: Optional[List[float]] = None,
     n_trials: int = 10,
+    seed: int = 0,
     verbose: bool = True,
 ) -> pd.DataFrame:
     """
@@ -129,11 +122,16 @@ def run_experiment(
         - ``'pre-treatment'`` — use the pre-treatment columns of ``O``
           (requires at least one treated unit with start index > 0).
     treatment_levels : list[float], default [0.2]
-        Fraction of ``mean(M)`` injected as ``tau_star``.  Multiple values
-        produce one block of results per level.
+        Fraction of ``mean(|M|)`` injected as ``tau_star`` (see
+        :func:`~causaltensor.semi_synthetic.utils.inject_treatment_centered`).
+        Multiple values produce one block of results per level.
     n_trials : int, default 10
         Number of independent trials per ``(pattern, treatment_level)``
-        combination.  Each trial uses a different random seed.
+        combination.
+    seed : int, default 0
+        Base random seed. Each ``(treatment_level, pattern, trial)`` uses a
+        distinct derived seed so trials differ across conditions and runs are
+        reproducible for a fixed ``seed``.
     verbose : bool, default True
         Print progress and per-trial results.
 
@@ -146,7 +144,7 @@ def run_experiment(
         ============== =====================================================
         method         estimator name
         pattern        synthetic treatment pattern used in this trial
-        treatment_level fraction of mean(M) used as tau_star
+        treatment_level fraction of mean(|M|) used as tau_star
         trial          0-based trial index
         tau_star       ground-truth injected effect
         tau_hat        estimated effect (NaN if estimator failed)
@@ -172,7 +170,7 @@ def run_experiment(
     methods_dict = _normalise_methods(methods, patterns)
 
     # Derive treatment structure from the observed Z
-    treated_states, treat_start_years = _treated_info_from_Z(Z)
+    treated_states, treat_start_years = treated_states_and_starts_from_Z(Z)
 
     if verbose:
         print(f"Data shape: {O.shape}")
@@ -187,16 +185,18 @@ def run_experiment(
 
     results = []
 
-    for t_level in treatment_levels:
+    for t_idx, t_level in enumerate(treatment_levels):
         if verbose:
             print(f"--- Treatment level: {t_level} ---")
 
-        for pattern_name in patterns:
+        for p_idx, pattern_name in enumerate(patterns):
             if verbose:
                 print(f"  {pattern_name}:")
 
             for trial in range(n_trials):
-                rng = np.random.default_rng(trial)
+                rng = np.random.default_rng(
+                    np.random.SeedSequence([seed, t_idx, p_idx, trial])
+                )
 
                 n_local, T_local = M.shape
                 m1, m2, lookback_a, duration_b = sample_treatment_parameters(

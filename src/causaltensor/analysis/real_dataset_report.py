@@ -4,8 +4,10 @@ Real-dataset treatment-effect reports using the same estimators as
 DID, SDID, OLS-SC, Robust SC).
 
 Only datasets that ship with a treatment matrix ``Z`` are included by default
-(classic case studies, PWT benchmarks, Dunnhumby promo). Recommendation
-datasets without ``Z`` are excluded.
+(classic case studies and PWT benchmarks). Large recommendation-style panels
+(retailrocket, dunnhumby, truus, movielens) have loader implementations but are
+not exposed in :func:`~causaltensor.datasets.load_dataset` until a sampling
+strategy is in place.
 """
 
 from __future__ import annotations
@@ -23,6 +25,7 @@ from causaltensor.utils.common import (
     extract_treatment_info_from_Z,
     get_tau_from_method_with_error,
 )
+from causaltensor.utils.panel import default_raw_datasets_path, prepare_panel
 
 logger = logging.getLogger(__name__)
 
@@ -43,22 +46,6 @@ _DATASETS_WITHOUT_Z = frozenset({"retailrocket", "truus", "movielens"})
 def datasets_with_treatment_pattern() -> Tuple[str, ...]:
     """Built-in dataset names that include a treatment matrix ``Z``."""
     return tuple(n for n in available_datasets() if n not in _DATASETS_WITHOUT_Z)
-
-
-def _default_raw_path() -> str:
-    return str(Path(__file__).resolve().parent.parent / "datasets" / "raw") + "/"
-
-
-def _prepare_panel(
-    Y_df: pd.DataFrame, Z_df: Optional[pd.DataFrame]
-) -> Tuple[np.ndarray, Optional[np.ndarray]]:
-    """Align and convert to float arrays; binarize ``Z`` for estimators."""
-    O = Y_df.values.astype(float)
-    if Z_df is None:
-        return O, None
-    Z_aligned = Z_df.reindex(index=Y_df.index, columns=Y_df.columns)
-    Z = (Z_aligned.fillna(0).values > 0).astype(float)
-    return O, Z
 
 
 def _tau_to_report_scalar(tau: Union[float, np.ndarray]) -> float:
@@ -97,10 +84,10 @@ def run_report_for_dataset(
         panel shape, and treatment summary.
     """
     if datasets_path is None:
-        datasets_path = _default_raw_path()
+        datasets_path = default_raw_datasets_path()
 
     Y_df, Z_df, _X_df = load_dataset(dataset_name, datasets_path=datasets_path)
-    O, Z = _prepare_panel(Y_df, Z_df)
+    O, Z = prepare_panel(Y_df, Z_df)
 
     if Z is None or not np.any(Z):
         treated_states, treat_start_years = [], []

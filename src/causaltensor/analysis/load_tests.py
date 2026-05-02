@@ -130,14 +130,14 @@ def run_load_test(
 
         for method in methods:
             times, mems = [], []
-            last_err = None
+            first_err: Optional[str] = None
 
             for _ in range(n_reps):
                 t_s, mem_mb, err = _time_and_memory(method, O, Z)
                 times.append(t_s)
                 mems.append(mem_mb)
-                if err:
-                    last_err = err
+                if err is not None and first_err is None:
+                    first_err = err
 
             done += 1
             row = dict(
@@ -146,12 +146,12 @@ def run_load_test(
                 time_std=float(np.std(times)),
                 memory_mb=float(np.mean(mems)),
                 memory_std=float(np.std(mems)),
-                error=last_err,
+                error=first_err,
             )
             results.append(row)
 
             if verbose:
-                status = f"ERR: {last_err[:40]}" if last_err else f"{row['time_s']:.3f}s  {row['memory_mb']:.1f}MB"
+                status = f"ERR: {first_err[:40]}" if first_err else f"{row['time_s']:.3f}s  {row['memory_mb']:.1f}MB"
                 print(f"  [{done:3d}/{total}]  N={N:4d}  T={T:4d}  {method:<22s}  {status}")
 
     return pd.DataFrame(results)

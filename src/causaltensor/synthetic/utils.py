@@ -86,13 +86,21 @@ def add_noise(M, noise_scale=1.0, rng=None):
     return M + rng.normal(0.0, noise_scale, size=M.shape)
 
 
-def add_noise_poisson(M):
+def add_noise_poisson(M, rng=None):
     """
     Add Poisson noise: O[i,t] ~ Poisson(M[i,t]).
     Requires M to be non-negative (use generate_low_rank_M_nonneg).
+
+    Parameters
+    ----------
+    M : np.ndarray
+        Non-negative rate matrix.
+    rng : int or np.random.Generator, optional
+        Seed or Generator for reproducibility.
 
     Returns
     -------
     O : np.ndarray, same shape as M
     """
-    return np.random.poisson(np.maximum(M, 0))
+    rng = np.random.default_rng(rng)
+    return rng.poisson(np.maximum(M, 0))

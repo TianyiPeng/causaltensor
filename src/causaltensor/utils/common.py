@@ -52,6 +52,19 @@ def extract_treatment_info_from_Z(Y_df: pd.DataFrame, Z_df: pd.DataFrame | None)
     return treated_states, treat_start_years
 
 
+def treated_states_and_starts_from_Z(Z: np.ndarray) -> tuple[list[int], list[int]]:
+    """
+    Derive treated row indices and first-treated column indices from a binary mask.
+
+    Same indexing convention as :func:`extract_treatment_info_from_Z`, but for a
+    NumPy array ``Z`` (rows = units, columns = time).
+    """
+    treated_mask = np.asarray(Z, dtype=float).any(axis=1)
+    treated_states = list(np.where(treated_mask)[0])
+    treat_start_years = [int(np.argmax(Z[i, :])) for i in treated_states]
+    return treated_states, treat_start_years
+
+
 def get_tau_from_method_with_error(method_name: str, O_syn: np.ndarray, Z: np.ndarray):
     """
     Run a single estimator and return (tau_hat, error_or_None).

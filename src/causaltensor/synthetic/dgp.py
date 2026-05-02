@@ -85,11 +85,11 @@ def generate(
         Synthetic treatment pattern. ``None`` returns Z = all zeros.
     treatment_level : float or None, optional
         When provided, a treatment effect of size ``treatment_level * mean(|M|)``
-        is injected into ``O`` using :func:`inject_treatment_centered` and the
-        function returns a **3-tuple** ``(O, Z, tau_true)`` so you can evaluate
-        an estimator against the known ground truth.
-        When ``None`` (default), ``O`` is the pure baseline + noise and the
-        function returns a **2-tuple** ``(O, Z)``.
+        is injected into ``O`` using :func:`inject_treatment_centered` and
+        ``tau_true`` is the known ATT.
+        When ``None`` (default), no effect is injected and ``tau_true`` is
+        ``0.0``; ``O`` is baseline + noise only. The return type is always
+        ``(O, Z, tau_true)``.
     seed : int or None, optional
         Random seed for full reproducibility.
 
@@ -173,7 +173,7 @@ def generate(
 
     # --- Add noise (always after treatment injection so rng state is consistent) ---
     if noise_type == "poisson":
-        O = add_noise_poisson(M)
+        O = add_noise_poisson(M, rng=rng)
     else:
         O = add_noise(M, noise_scale=noise_scale, rng=rng)
 

@@ -28,11 +28,10 @@ import pandas as pd
 
 from causaltensor.semi_synthetic.utils import (
     build_baseline_M,
-    print_summary_table,
     sample_treatment_parameters,
 )
 from causaltensor.utils.treatment_patterns import Z_adaptive, Z_block, Z_iid, Z_stagger
-from causaltensor.utils.common import get_tau_from_method
+from causaltensor.utils.common import get_tau_from_method, treated_states_and_starts_from_Z
 
 VALID_PATTERNS: List[str] = ["IID", "Block", "Staggered", "Adaptive"]
 
@@ -45,14 +44,6 @@ DEFAULT_METHODS: Dict[str, List[str]] = {
     "SC":              ["Block"],
     "RobustSyntheticControl": ["Block"],
 }
-
-
-def _treated_info_from_Z(Z: np.ndarray):
-    """Derive (treated_states, treat_start_years) from a numpy treatment mask."""
-    treated_mask = Z.any(axis=1)
-    treated_states = list(np.where(treated_mask)[0])
-    treat_start_years = [int(np.argmax(Z[i, :])) for i in treated_states]
-    return treated_states, treat_start_years
 
 
 def _normalise_methods(
@@ -71,6 +62,7 @@ def run_aa_test(
     patterns: Optional[List[str]] = None,
     baseline_type: str = "control",
     n_trials: int = 10,
+    seed: int = 0,
     fpr_threshold: float = 0.05,
     verbose: bool = True,
 ) -> pd.DataFrame:
@@ -101,6 +93,8 @@ def run_aa_test(
     n_trials : int, default 10
         Number of random treatment assignments per ``(pattern, method)``
         combination.
+    seed : int, default 0
+        Base random seed. Each ``(pattern, trial)`` uses a distinct derived seed.
     fpr_threshold : float, default 0.05
         A trial is a *false positive* when
         ``|tau_hat| / std(M) > fpr_threshold``.
@@ -138,7 +132,7 @@ def run_aa_test(
 
     methods_dict = _normalise_methods(methods, patterns)
 
-    treated_states, treat_start_years = _treated_info_from_Z(Z)
+    treated_states, treat_start_years = treated_states_and_starts_from_Z(Z)
 
     if verbose:
         print(f"Data shape: {O.shape}")
@@ -155,12 +149,14 @@ def run_aa_test(
 
     results = []
 
-    for pattern_name in patterns:
+    for p_idx, pattern_name in enumerate(patterns):
         if verbose:
             print(f"  {pattern_name}:")
 
         for trial in range(n_trials):
-            rng = np.random.default_rng(trial)
+            rng = np.random.default_rng(
+                np.random.SeedSequence([seed, p_idx, trial])
+            )
 
             m1, m2, lookback_a, duration_b = sample_treatment_parameters(n, T, rng)
 

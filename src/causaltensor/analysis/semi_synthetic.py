@@ -11,6 +11,7 @@ def run_semi_synthetic_experiment(O, treated_states, treat_start_years,
                                    treatment_levels=None,
                                    methods=None,
                                    n_trials=10,
+                                   seed=0,
                                    verbose=True):
     """
     Run semi-synthetic experiments with different treatment patterns, levels, and methods.
@@ -32,12 +33,14 @@ def run_semi_synthetic_experiment(O, treated_states, treat_start_years,
     baseline_type : {'control', 'pre-treatment'}, default 'control'
         How to build the baseline matrix ``M``.
     treatment_levels : list of float, optional
-        Fraction of mean(M) injected as tau_star.
+        Fraction of mean(|M|) injected as tau_star.
         Defaults to ``[0.2, 0.1, 0.05, 0.01]``.
     methods : None | list[str] | dict[str, list[str]], optional
         Estimators to evaluate. See :func:`~causaltensor.semi_synthetic.run_experiment`.
     n_trials : int, default 10
         Trials per (pattern, treatment_level) combination.
+    seed : int, default 0
+        Passed to :func:`~causaltensor.semi_synthetic.run_experiment`.
     verbose : bool, default True
         Print progress.
 
@@ -62,12 +65,13 @@ def run_semi_synthetic_experiment(O, treated_states, treat_start_years,
         baseline_type=baseline_type,
         treatment_levels=treatment_levels,
         n_trials=n_trials,
+        seed=seed,
         verbose=verbose,
     )
 
 
 def run_experiments(O, treated_states, treat_start_years, treatment_levels, baseline_type,
-                    methods=None, n_trials=10, dataset_name=None):
+                    methods=None, n_trials=10, dataset_name=None, seed=0):
     """
     Run experiments for a given baseline type, print a summary, and save results.
 
@@ -89,6 +93,8 @@ def run_experiments(O, treated_states, treat_start_years, treatment_levels, base
         Trials per combination.
     dataset_name : str, optional
         Used for organising output files.
+    seed : int, default 0
+        Random seed for :func:`run_semi_synthetic_experiment`.
     """
     results_df = run_semi_synthetic_experiment(
         O=O,
@@ -98,6 +104,7 @@ def run_experiments(O, treated_states, treat_start_years, treatment_levels, base
         treatment_levels=treatment_levels,
         methods=methods,
         n_trials=n_trials,
+        seed=seed,
         verbose=True,
     )
 

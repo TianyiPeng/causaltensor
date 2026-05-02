@@ -22,13 +22,10 @@ from typing import Iterable, List, Optional, Sequence, Tuple
 
 import pandas as pd
 
+from causaltensor.analysis.real_dataset_report import datasets_with_treatment_pattern
 from causaltensor.datasets.dataset_loader import load_dataset
-from causaltensor.analysis.real_dataset_report import (
-    _default_raw_path,
-    _prepare_panel,
-    datasets_with_treatment_pattern,
-)
 from causaltensor.semi_synthetic.aa_test import run_aa_test
+from causaltensor.utils.panel import default_raw_datasets_path, prepare_panel
 
 logger = logging.getLogger(__name__)
 
@@ -42,6 +39,7 @@ def run_aa_report(
     patterns: Optional[List[str]] = None,
     n_trials: int = 10,
     fpr_threshold: float = 0.05,
+    seed: int = 0,
     verbose: bool = True,
 ) -> pd.DataFrame:
     """
@@ -61,6 +59,10 @@ def run_aa_report(
         Trials per (dataset, baseline_type, pattern, method).
     fpr_threshold : float, default 0.05
         False-positive threshold: ``|tau_hat| / std(M) > this``.
+    seed : int, default 0
+        Base random seed for :func:`~causaltensor.semi_synthetic.run_aa_test` calls.
+        Each dataset and baseline type uses a derived seed so runs are reproducible
+        and independent across conditions.
     verbose : bool, default True
         Print progress per dataset.
 
@@ -69,27 +71,28 @@ def run_aa_report(
     pd.DataFrame
         All trial-level rows concatenated, with an added ``dataset`` column.
     """
-    datasets_path = _default_raw_path()
+    datasets_path = default_raw_datasets_path()
     names = list(dataset_names) if dataset_names is not None else list(datasets_with_treatment_pattern())
     frames = []
 
-    for dataset_name in names:
+    for ds_idx, dataset_name in enumerate(names):
         if verbose:
             print(f"\n{'='*60}")
             print(f"Dataset: {dataset_name}")
             print(f"{'='*60}")
 
         Y_df, Z_df, _ = load_dataset(dataset_name, datasets_path=datasets_path)
-        O, Z = _prepare_panel(Y_df, Z_df)
+        O, Z = prepare_panel(Y_df, Z_df)
 
         if Z is None or not np.any(Z):
             logger.warning("Skipping %s: no treatment matrix Z.", dataset_name)
             continue
 
-        for baseline_type in baseline_types:
+        for b_idx, baseline_type in enumerate(baseline_types):
             if verbose:
                 print(f"\n-- baseline_type: {baseline_type} --")
             try:
+                sub_seed = seed + ds_idx * 100_003 + b_idx * 10_007
                 df = run_aa_test(
                     O, Z,
                     methods=methods,
@@ -97,6 +100,7 @@ def run_aa_report(
                     baseline_type=baseline_type,
                     n_trials=n_trials,
                     fpr_threshold=fpr_threshold,
+                    seed=sub_seed,
                     verbose=verbose,
                 )
                 df.insert(0, "dataset", dataset_name)
@@ -148,6 +152,10 @@ def main(argv: Optional[Sequence[str]] = None) -> pd.DataFrame:
         help="False-positive threshold: |tau_hat| / std(M) > this (default: 0.05).",
     )
     parser.add_argument(
+        "--seed", type=int, default=0,
+        help="Random seed for A/A trials (default: 0).",
+    )
+    parser.add_argument(
         "--out-dir", default=None,
         help="Output directory for CSV (default: analysis/results/aa_tests).",
     )
@@ -158,6 +166,7 @@ def main(argv: Optional[Sequence[str]] = None) -> pd.DataFrame:
         baseline_types=args.baseline,
         n_trials=args.n_trials,
         fpr_threshold=args.fpr_threshold,
+        seed=args.seed,
     )
     csv_path = save_aa_report(df, output_dir=args.out_dir)
     print(f"\nReport saved to {csv_path}")

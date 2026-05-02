@@ -71,7 +71,7 @@ def inject_treatment_centered(M, Z, *,
     Inject treatment with unit- and time-heterogeneity, centered over treated cells:
         O = M + (tau* + delta_i + eta_t) ∘ Z
 
-    - tau* = mean(M) * treatment_level
+    - tau* = mean(|M|) * treatment_level
     - delta_i ~ N(0, sigma_unit_scale * |tau*|)
     - eta_t   ~ N(0, sigma_time_scale * |tau*|)
     - Both delta_i and eta_t are re-centered (weighted by treated counts) so that
@@ -85,7 +85,7 @@ def inject_treatment_centered(M, Z, *,
     n, T = M.shape
 
     # Base effect and heterogeneity scales
-    tau_star = np.mean(M) * treatment_level
+    tau_star = np.mean(np.abs(M)) * treatment_level
     sigma_delta = sigma_unit_scale * abs(tau_star)
     sigma_eta   = sigma_time_scale * abs(tau_star)
 
