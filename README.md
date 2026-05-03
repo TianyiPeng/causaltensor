@@ -16,7 +16,10 @@ CausalTensor is compatible with Python 3 or later and also depends on numpy. The
 Note that CausalTensor is an active project and routinely publishes new releases. In order to upgrade CausalTensor to the latest version, use pip as follows.
 
     $ pip install -U causaltensor
-    
+
+## Built-in datasets
+`load_dataset` and `available_datasets()` cover case-study and PWT benchmark panels shipped under `causaltensor/datasets/raw`. Loader code for very large recommendation-style panels (retailrocket, dunnhumby, truus, movielens) remains in the package but those names are **not** registered in the dispatcher until row/column sampling is supported, so default workflows stay lightweight.
+
 ## Using CausalTensor
 We have implemented the following estimators including the traditional method Difference-in-Difference and recent proposed methods such as Synthetic Difference-in-Difference, Matrix Completion with Nuclear Norm Minimization, and De-biased Convex Panel Regression.  
 

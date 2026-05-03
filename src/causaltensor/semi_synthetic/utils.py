@@ -1,4 +1,5 @@
 import numpy as np
+import pandas as pd
 
 
 def sample_treatment_parameters(n, T, rng):
@@ -60,23 +61,6 @@ def build_baseline_M(O, treated_states, treat_start_years, baseline_type='contro
     return M, M.shape[0], M.shape[1]
 
 
-def filter_treated_for_pretreatment_baseline(treated_states, treat_start_years):
-    """
-    Keep parallel lists aligned to treated units with treatment start index > 0.
-
-    Pre-treatment baseline uses M = O[:, :min(starts)]; if any unit has start 0,
-    that minimum is 0 and the pre-period is empty. Restricting to starts > 0
-    avoids an empty slice while still using all pre-treatment periods common to
-    the included units.
-    """
-    ts = []
-    ys = []
-    for r, t in zip(treated_states, treat_start_years):
-        if t > 0:
-            ts.append(r)
-            ys.append(t)
-    return ts, ys
-
 
 def inject_treatment_centered(M, Z, *,
                               treatment_level=0.2,
@@ -87,24 +71,23 @@ def inject_treatment_centered(M, Z, *,
     Inject treatment with unit- and time-heterogeneity, centered over treated cells:
         O = M + (tau* + delta_i + eta_t) ∘ Z
 
-    - tau* = mean(M) * treatment_level
-    - delta_i ~ N(0, sigma_unit_scale * tau*)
-    - eta_t   ~ N(0, sigma_time_scale * tau*)
+    - tau* = mean(|M|) * treatment_level
+    - delta_i ~ N(0, sigma_unit_scale * |tau*|)
+    - eta_t   ~ N(0, sigma_time_scale * |tau*|)
     - Both delta_i and eta_t are re-centered (weighted by treated counts) so that
       the ATT over treated cells equals tau*
 
     Returns:
-        O            : observed panel
-        att_true     : ground-truth ATT over treated cells
-        tau_star     : intended average effect
+        O        : observed panel
+        tau_star : intended average effect (ground truth)
     """
     rng = np.random.default_rng(rng)
     n, T = M.shape
 
     # Base effect and heterogeneity scales
-    tau_star = np.mean(M) * treatment_level
-    sigma_delta = sigma_unit_scale * tau_star
-    sigma_eta   = sigma_time_scale * tau_star
+    tau_star = np.mean(np.abs(M)) * treatment_level
+    sigma_delta = sigma_unit_scale * abs(tau_star)
+    sigma_eta   = sigma_time_scale * abs(tau_star)
 
     # Draw heterogeneity
     delta_i = rng.normal(0.0, sigma_delta, size=n)   # unit-fixed shock
@@ -137,3 +120,49 @@ def inject_treatment_centered(M, Z, *,
     assert np.isclose(att_true, tau_star)
 
     return O, tau_star
+
+
+def print_summary_table(df: pd.DataFrame) -> None:
+    """Print mean +/- std of relative error grouped by treatment_level / method / pattern."""
+    summary = (
+        df.groupby(["treatment_level", "method", "pattern"])["error"]
+        .agg(mean="mean", std="std")
+        .reset_index()
+    )
+    summary["std"] = summary["std"].fillna(0.0)
+
+    col_widths = {
+        "treatment_level": max(len("treatment_level"), summary["treatment_level"].apply(lambda x: f"{x}").str.len().max()),
+        "method":          max(len("method"),          summary["method"].str.len().max()),
+        "pattern":         max(len("pattern"),         summary["pattern"].str.len().max()),
+        "error":           len("mean_error +/- std"),
+    }
+
+    header = (
+        f"{'treatment_level':<{col_widths['treatment_level']}}  "
+        f"{'method':<{col_widths['method']}}  "
+        f"{'pattern':<{col_widths['pattern']}}  "
+        f"{'mean_error +/- std':>{col_widths['error']}}"
+    )
+    sep = "-" * len(header)
+
+    print("\n=== Summary: mean relative error +/- std across trials ===")
+    print(sep)
+    print(header)
+    print(sep)
+
+    prev_level = None
+    for _, row in summary.iterrows():
+        if row["treatment_level"] != prev_level:
+            if prev_level is not None:
+                print(sep)
+            prev_level = row["treatment_level"]
+        cell = f"{row['mean']:.4f} +/- {row['std']:.4f}"
+        print(
+            f"{str(row['treatment_level']):<{col_widths['treatment_level']}}  "
+            f"{row['method']:<{col_widths['method']}}  "
+            f"{row['pattern']:<{col_widths['pattern']}}  "
+            f"{cell:>{col_widths['error']}}"
+        )
+
+    print(sep)

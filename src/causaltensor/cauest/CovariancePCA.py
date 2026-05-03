@@ -11,6 +11,9 @@ import warnings
 
 import numpy as np
 
+from causaltensor.cauest.panel_solver import PanelSolver
+from causaltensor.cauest.result import Result
+
 
 def random_subset(Ω, K, m):
     """
@@ -179,3 +182,64 @@ def covariance_PCA(O, Z, Omega=None, suggest_r=-1, return_U=False):
     if return_U:
         return M, tau, U
     return M, tau
+
+
+class CovariancePCAResult(Result):
+    """Result container for :class:`CovariancePCAPanelSolver`."""
+
+    def __init__(self, baseline=None, tau=None, U=None):
+        super().__init__(baseline=baseline, tau=tau)
+        self.M = baseline  # low-rank reconstruction
+        self.U = U         # left factor matrix (N × r)
+
+
+class CovariancePCAPanelSolver(PanelSolver):
+    """
+    Covariance PCA estimator (Xiong & Pelger, 2019).
+
+    Fits a low-rank counterfactual matrix using only control cells
+    ``(1 - Z) ⊙ Omega``. Rank ``r`` is either supplied or chosen by CV.
+
+    Parameters
+    ----------
+    O : ndarray, shape (N, T)
+        Observed outcome panel (units × time).
+    Z : ndarray, shape (N, T)
+        Binary treatment mask (1 = treated).
+    Omega : ndarray, shape (N, T), optional
+        Extra observation mask (1 = data present). Defaults to all ones.
+    suggest_r : int, optional
+        Fixed rank if ``>= 1``; use ``-1`` (default) for CV.
+
+    Examples
+    --------
+    >>> solver = CovariancePCAPanelSolver(O, Z)
+    >>> result = solver.fit()
+    >>> result.tau        # ATT estimate
+    >>> result.baseline   # low-rank counterfactual panel
+    """
+
+    def __init__(self, O, Z, Omega=None, suggest_r=-1):
+        self.O = np.asarray(O, dtype=float)
+        self.Z = np.asarray(Z, dtype=float)
+        self.Omega = Omega
+        self.suggest_r = suggest_r
+
+    def fit(self):
+        """
+        Run the Covariance PCA algorithm.
+
+        Returns
+        -------
+        CovariancePCAResult
+            ``.tau``     — ATT estimate (float)
+            ``.baseline`` / ``.M`` — low-rank counterfactual panel (ndarray)
+            ``.U``       — left factor matrix (ndarray, N × r)
+        """
+        M, tau, U = covariance_PCA(
+            self.O, self.Z,
+            Omega=self.Omega,
+            suggest_r=self.suggest_r,
+            return_U=True,
+        )
+        return CovariancePCAResult(baseline=M, tau=tau, U=U)

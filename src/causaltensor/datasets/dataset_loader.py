@@ -470,10 +470,13 @@ DATASET_BUILDERS: Dict[str, Callable[[str], Tuple[pd.DataFrame, Optional[pd.Data
     "pwt_chile_trade": _load_pwt_chile_trade_dataset,
     "pwt_korea_democracy": _load_pwt_korea_democracy_dataset,
     "pwt_norway_oil": _load_pwt_norway_oil_dataset,
-    "retailrocket": _load_retailrocket_dataset,
-    "dunnhumby": _load_dunnhumby_dataset,
-    "truus": _load_truus_dataset,
-    "movielens": _load_movielens_dataset,
+    # Recommendation / promo panels (loaders below are kept for future use):
+    # disabled until row/column sampling is implemented — full grids are too large
+    # for default workflows. Names are intentionally omitted from this dict.
+    # "retailrocket": _load_retailrocket_dataset,
+    # "dunnhumby": _load_dunnhumby_dataset,
+    # "truus": _load_truus_dataset,
+    # "movielens": _load_movielens_dataset,
 }
 
 
@@ -493,12 +496,10 @@ if __name__ == "__main__":
         print(f"Z_df shape: {Z_df.shape}")
         print(f"X_df shape: {X_df.shape}")
         
-        # Load a recommendation dataset (no Z_df or X_df)
-        Y_df, Z_df, X_df = load_dataset("movielens")
-        print("\nMovieLens dataset loaded successfully!")
-        print(f"Y_df shape: {Y_df.shape}")
-        print(f"Z_df: {Z_df}")
-        print(f"X_df: {X_df}")
+        # MovieLens / other recommendation loaders are not registered (see
+        # DATASET_BUILDERS comment). Example without treatment matrix:
+        # Y_df, Z_df, X_df = load_dataset("basque")
+        # print(f"Basque Y_df shape: {Y_df.shape}")
         
     except Exception as e:
         print(f"Error: {e}")
