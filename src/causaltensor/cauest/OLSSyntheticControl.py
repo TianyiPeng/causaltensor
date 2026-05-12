@@ -1,5 +1,5 @@
 """
-Synthetic control via constrained least squares (Abadie–Diamond–Hainmueller style).
+Synthetic control via constrained least squares (Abadie-Diamond-Hainmueller style).
 
 Weights on donor units are chosen to minimize pre-period outcome error subject to
 simplex constraints; optional covariates enter a nested predictor-reweighting step.
@@ -46,7 +46,7 @@ class OLSSCPanelSolver(PanelSolver):
     Parameters
     ----------
     Y : ndarray, shape (N, T)
-        Panel outcomes (units × time).
+        Panel outcomes (units x time).
     Z : ndarray, shape (N, T)
         Treatment indicators; first period with any ``Z==1`` defines the end of
         the pre-period for all units (common ``T0`` index).
@@ -91,7 +91,7 @@ class OLSSCPanelSolver(PanelSolver):
         T0 : int
             Index of the first period with any treatment (pre-period is ``0:T0``).
         Y0 : ndarray
-            Control columns of ``Y`` (time × n_control).
+            Control columns of ``Y`` (time x n_control).
         Y1 : ndarray
             Treated columns of ``Y``.
         X0, X1 : ndarray or None
@@ -210,7 +210,18 @@ class OLSSCPanelSolver(PanelSolver):
         return M, tau, W, V
 
     def fit(self):
-        """Estimate counterfactuals and (optional) unit-level placebo p-values."""
+        """
+        Estimate counterfactuals and (optional) unit-level placebo p-values.
+
+        Returns
+        -------
+        OLSSCResult
+            Result object.  Key attributes: ``tau`` (average ATT float),
+            ``baseline`` (counterfactual panel N x T), ``individual_te``
+            (per-unit ``[unit_idx, tau_hat]`` list, extended to
+            ``[unit_idx, tau_hat, p_value]`` when ``pval=True``),
+            ``beta`` (list of simplex weight vectors).
+        """
         T = len(self.Y1)
         V = []
         weights = []
@@ -292,7 +303,7 @@ def ols_synthetic_control(O, Z, X=None):
     Parameters
     ----------
     O : ndarray, shape (N, T)
-        Outcomes (units × time).
+        Outcomes (units x time).
     Z : ndarray, shape (N, T)
         Treatment indicators.
     X : ndarray, shape (N, K), optional

@@ -141,15 +141,15 @@ def run_experiment(
         One row per ``(method, pattern, treatment_level, trial)`` with
         columns:
 
-        ============== =====================================================
-        method         estimator name
-        pattern        synthetic treatment pattern used in this trial
-        treatment_level fraction of mean(|M|) used as tau_star
-        trial          0-based trial index
-        tau_star       ground-truth injected effect
-        tau_hat        estimated effect (NaN if estimator failed)
-        error          |tau_star - tau_hat| / |tau_star| (NaN on failure)
-        ============== =====================================================
+        ================ ===================================================
+        method           estimator name
+        pattern          synthetic treatment pattern used in this trial
+        treatment_level  fraction of mean(abs(M)) used as tau_star
+        trial            0-based trial index
+        tau_star         ground-truth injected effect
+        tau_hat          estimated effect (NaN if estimator failed)
+        error            abs(tau_star - tau_hat) / abs(tau_star) (NaN on failure)
+        ================ ===================================================
     """
     if treatment_levels is None:
         treatment_levels = [0.2]

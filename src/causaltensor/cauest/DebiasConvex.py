@@ -3,7 +3,6 @@ import causaltensor.matlib.util as util
 from causaltensor.matlib.util import transform_to_3D
 from causaltensor.cauest.result import Result
 from causaltensor.cauest.panel_solver import PanelSolver
-from causaltensor.cauest.panel_solver import FixedEffectPanelSolver
 
 class DCResult(Result):
     def __init__(self, baseline = None, tau=None, std=None, return_tau_scalar=False):
@@ -12,17 +11,41 @@ class DCResult(Result):
         self.M = baseline # for backward compatability
 
 class DCPanelSolver(PanelSolver):
-    def __init__(self, O=None, Z=None, suggest_r=None):
-        """
-        De-biased Convex Panel Regression with the regularizer l. 
+    """
+    De-biased Convex Panel Regression (DC-PR).
 
-        Parameters
-        -------------
-        O : 2d float numpy array
-            Observation matrix.
-        Z : a list of 2d float numpy array or a single 2d/3d float numpy array
-            Intervention matrices. If Z is a list, then each element of the list is a 2d numpy array. If Z is a single 2d numpy array, then Z is a single intervention matrix. If Z is a 3d numpy array, then Z is a collection of intervention matrices with the last dimension being the index of interventions.
-        """
+    Fits a low-rank baseline matrix ``M`` jointly with treatment effects ``tau``
+    via nuclear-norm regularisation, then applies a closed-form debiasing
+    correction (Farias, Li & Peng, 2021).
+
+    Parameters
+    ----------
+    O : ndarray, shape (N, T)
+        Observed outcome panel (units x time).
+    Z : ndarray, shape (N, T) or (N, T, K) or list of ndarray
+        Binary treatment mask(s).  A single 2-D array is treated as one
+        treatment; a 3-D array or list supports ``K`` simultaneous treatments
+        (last dimension / list index = treatment index).
+    suggest_r : int or None, optional
+        If provided, fix the baseline rank to this value instead of selecting
+        it automatically from the spectrum.  ``None`` (default) triggers
+        automatic rank selection via :meth:`fit`.
+
+    References
+    ----------
+    Farias, V., Li, A., & Peng, T. (2021). Learning treatment effects in panels
+    with general intervention patterns. *NeurIPS 34*, 14001-14013.
+
+    Examples
+    --------
+    >>> solver = DCPanelSolver(O, Z)
+    >>> result = solver.fit()
+    >>> result.tau       # ATT estimate (float or array for K treatments)
+    >>> result.baseline  # low-rank counterfactual panel (N x T)
+    >>> result.std       # sandwich standard deviation
+    """
+
+    def __init__(self, O=None, Z=None, suggest_r=None):
         super().__init__(Z)
         self.O = O
         self.Z = transform_to_3D(Z) ## Z is (n1 x n2 x num_treat) numpy array
@@ -39,6 +62,34 @@ class DCPanelSolver(PanelSolver):
         return small_index, X, Xinv  
 
     def fit(self, suggest_r=None, auto_rank=True, spectrum_cut=0.002, method='auto', method_non_neg=None):
+        """
+        Estimate the treatment effect via DC-PR.
+
+        Parameters
+        ----------
+        suggest_r : int or None, optional
+            Baseline rank.  Overrides the value passed at construction.
+            If ``None`` and ``auto_rank=True``, rank is selected from the
+            spectrum of ``O`` (retaining singular values that explain
+            ``1 - spectrum_cut`` of the total energy).
+        auto_rank : bool, optional
+            Select rank automatically when ``suggest_r`` is not given (default
+            ``True``).
+        spectrum_cut : float, optional
+            Energy threshold for automatic rank selection (default ``0.002``).
+        method : {'auto', 'convex', 'non-convex'}, optional
+            Optimisation strategy.  ``'auto'`` picks whichever of convex and
+            non-convex gives a lower residual (default).
+        method_non_neg : str or None, optional
+            Non-negativity constraint method for ``M``; ``None`` disables it.
+
+        Returns
+        -------
+        DCResult
+            Result object.  Key attributes: ``tau`` (ATT scalar or array),
+            ``baseline`` / ``M`` (de-biased counterfactual panel N x T),
+            ``std`` (sandwich standard-deviation).
+        """
         if suggest_r is not None:
             M, tau, std = self.DC_PR_with_suggested_rank(suggest_r=suggest_r, method=method, method_non_neg=method_non_neg)
         elif auto_rank:

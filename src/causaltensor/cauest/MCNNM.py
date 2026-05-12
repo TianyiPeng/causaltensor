@@ -49,26 +49,58 @@ class MCNNMResult(Result):
         self.M = M # the low-rank component of the baseline model
 
 class MCNNMPanelSolver(PanelSolver):
-    """ 
-    Solve the matrix completion problem with nuclear norm regularizer and fixed effects for panel data with covariates and missing data
-        reference: https://arxiv.org/pdf/1710.10251.pdf
+    """
+    Matrix Completion with Nuclear Norm Minimisation (MC-NNM).
+
+    Recovers a low-rank outcome matrix under a nuclear-norm penalty, jointly
+    estimating row / column fixed effects and optional covariate coefficients
+    on the control cells ``(1 - Z) ⊙ Omega``.  Regularisation is chosen by
+    K-fold cross-validation (Athey et al., 2021).
+
+    Parameters
+    ----------
+    O : ndarray, shape (N, T)
+        Observed outcome panel (units x time).
+    Z : ndarray, shape (N, T), dtype bool or {0, 1}
+        Binary treatment mask.
+    X : ndarray, shape (N, T, K) or (N, T) or list of ndarray, optional
+        Time-varying covariates.
+    Omega : ndarray, shape (N, T), dtype bool, optional
+        Observation mask (1 = present).  Defaults to all ones.
+    fixed_effects : str, optional
+        ``'two-way'`` (default).
+
+    References
+    ----------
+    Athey, S., Bayati, M., Doudchenko, N., Imbens, G., & Khosravi, K. (2021).
+    Matrix completion methods for causal panel data models. *JASA*, 116(536),
+    1716-1730.
+
+    Examples
+    --------
+    >>> solver = MCNNMPanelSolver(O, Z)
+    >>> result = solver.fit()          # runs cross-validation by default
+    >>> result.tau                     # ATT estimate
+    >>> result.baseline                # low-rank + FE counterfactual (N x T)
     """
 
     def __init__(self, O=None, Z=None, X=None, Omega=None, fixed_effects = 'two-way'):
         """
-        O: 2D float numpy array (N, T)
-            The outcome matrix.
-        Z: 2D bool numpy array (N, T)
-            The treatment matrix.
-            TODO: support multiple treatments for matrix completion algorithm
-            TODO: support non-binary treatment matrix
-        X: 3D float numpy array (n,m,p) or 2D float numpy array (n,m) or a list of 2D float numpy array
-            The covariates matrix. The last dimension is the index of covariates.
-        Omega: 2D bool numpy array (n,m)
-            Indicator matrix (1: observed, 0: missing).
-            The indicator matrix includes both the treated entries and untreated entries.
-        fixed_effects: ['two-way']
-            two-way fixed effects or one-way fixed effects (to be implemented)
+        Parameters
+        ----------
+        O : ndarray, shape (N, T)
+            Observed outcome panel (units x time).
+        Z : ndarray, shape (N, T), dtype bool or {0, 1}
+            Binary treatment mask.  Only block / single-treated-row patterns
+            are supported (multiple-treatment extension is a TODO).
+        X : ndarray, shape (N, T, K) or (N, T) or list of ndarray, optional
+            Time-varying covariates; last dimension is the covariate index.
+        Omega : ndarray, shape (N, T), dtype bool, optional
+            Observation mask (1 = present, 0 = missing).  Defaults to all ones.
+            Treated entries are internally re-classified as *missing* for the
+            MC objective.
+        fixed_effects : str, optional
+            ``'two-way'`` (default).  One-way support is not yet implemented.
         """
         self.O = O
         if (Omega is None):
@@ -119,31 +151,27 @@ class MCNNMPanelSolver(PanelSolver):
             raise ValueError("Provide list_l when cross_validation=False")
 
     def solve_with_regularizer(self, O=None, l=None, M_init=None, eps=1e-7, max_iter=2000):
-        """ Solve the matrix completion problem with nuclear norm regularizer and fixed effects
+        """Solve the matrix completion problem with a fixed nuclear-norm regulariser.
+
         Parameters
         ----------
-        O: 2D numpy array
-            the observation matrix
-        l: float
-            Nuclear norm regularizer.
-        M_init: 2D numpy array or None
-            Initial guess of the underlying low-rank matrix.
-        eps: float 
-            Convergence threshold.
-        max_iter: int
-            Maximum number of iterations.
+        O : ndarray, shape (N, T)
+            Observed outcome panel.
+        l : float
+            Nuclear-norm regularisation strength.
+        M_init : ndarray or None, optional
+            Warm-start for the low-rank matrix.
+        eps : float, optional
+            Convergence threshold (default 1e-7).
+        max_iter : int, optional
+            Maximum number of alternating iterations (default 2000).
+
         Returns
         -------
-        res: Result
-            res.M: 2D numpy array
-                The estimated low-rank matrix.
-            res.row_fixed_effects: 2D numpy array (n, 1)
-            res.column_fixed_effects: 2D numpy array (m, 1)
-            res.beta: 1D numpy array (p, ) if X is not None
-            res.baseline_model: 2D numpy array
-                The estimated baseline model (M+ai+bj+beta*X).
-            res.tau: float
-                The estimated treatment effect.
+        MCNNMResult
+            Result with ``tau`` (ATT), ``baseline`` (M + FE panel),
+            ``M`` (low-rank component), ``row_fixed_effects``,
+            ``column_fixed_effects``, and ``beta`` (covariate coefficients).
         """
         M = M_init
         if M is None:

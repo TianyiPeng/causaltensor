@@ -13,6 +13,38 @@ class DIDResult(Result):
 
         
 class DIDPanelSolver(PanelSolver):
+    """
+    Difference-in-Differences via two-way fixed effects (TWFE).
+
+    Estimates the ATT by regressing outcomes on unit fixed effects, time fixed
+    effects, and the treatment indicator ``Z`` (and optionally covariates ``X``):
+
+    .. math::
+
+        \\min_{a,b,\\tau} \\sum_{ij} (O_{ij} - a_i - b_j - \\tau Z_{ij})^2
+
+    Parameters
+    ----------
+    O : ndarray, shape (N, T)
+        Observed outcome panel (units x time).
+    Z : ndarray, shape (N, T)
+        Binary treatment mask (1 = treated).
+    X : ndarray, shape (N, T, K), optional
+        Additional time-varying covariates (K features).  When provided their
+        coefficients are estimated jointly with ``tau``.
+    Omega : ndarray, shape (N, T), optional
+        Observation mask (1 = observed).  Defaults to all ones.
+    fixed_effects : str, optional
+        Only ``'two-way'`` is currently implemented.
+
+    Examples
+    --------
+    >>> solver = DIDPanelSolver(O, Z)
+    >>> result = solver.fit()
+    >>> result.tau       # ATT scalar
+    >>> result.baseline  # fitted a_i + b_j surface (N x T)
+    """
+
     def __init__(self, O=None, Z=None, X=None, Omega=None, fixed_effects='two-way', **kwargs):
         super().__init__(Z)
         self.O = O
@@ -28,6 +60,23 @@ class DIDPanelSolver(PanelSolver):
         self.fixed_effects_solver = FixedEffectPanelSolver(X = new_X, Omega=Omega, fixed_effects=fixed_effects, **kwargs)
 
     def fit(self, O=None):
+        """
+        Estimate ATT via TWFE regression.
+
+        Parameters
+        ----------
+        O : ndarray, shape (N, T), optional
+            Outcome panel.  If omitted, uses the ``O`` passed at construction.
+
+        Returns
+        -------
+        DIDResult
+            ``.tau``                 -- ATT scalar (or array if ``X`` covariates).
+            ``.baseline``  / ``.M`` -- fitted ``a_i + b_j`` surface (N x T).
+            ``.row_fixed_effects``   -- unit FE vector (N,).
+            ``.column_fixed_effects`` -- time FE vector (T,).
+            ``.beta``               -- covariate coefficients (None if no ``X``).
+        """
         if O is None:
             O = self.O
         if O is None:
