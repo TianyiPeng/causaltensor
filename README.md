@@ -1,39 +1,102 @@
 # CausalTensor
- CausalTensor is a python package for doing causal inference and policy evaluation using panel data. The package achieves 30K downloads by 2025-10.  
+
+CausalTensor is a Python package for causal inference and policy evaluation on panel data. Given an outcome matrix **O** (N units x T time periods) and a treatment mask **Z**, it estimates the average treatment effect on the treated (ATT) using seven modern estimators.
 
 [![PyPI Version](https://badge.fury.io/py/causaltensor.svg)](https://pypi.org/project/causaltensor/)
 [![Documentation Status](https://readthedocs.org/projects/causaltensor/badge/?version=latest)](https://causaltensor.readthedocs.io/en/latest/?badge=latest)
 [![Downloads](https://static.pepy.tech/badge/causaltensor)](https://pepy.tech/project/causaltensor)
 
-## What is CausalTensor
-CausalTensor is a suite of tools for addressing questions like "What is the impact of strategy X to outcome Y" given time-series data colleting from multiple units. Answering such questions has wide range of applications from econometrics, operations research, business analytics, polictical science, to healthcare. Please visit our [complete documentation](https://causaltensor.readthedocs.io/) for more information. 
+---
 
-## Installing CausalTensor
-CausalTensor is compatible with Python 3 or later and also depends on numpy. The simplest way to install CausalTensor and its dependencies is from PyPI with pip, Python's preferred package installer.
+## Installation
 
-    $ pip install causaltensor
+```bash
+pip install causaltensor
+```
 
-Note that CausalTensor is an active project and routinely publishes new releases. In order to upgrade CausalTensor to the latest version, use pip as follows.
+Optional dependencies: `cvxpy` (required for SDID), `pyreadr` (required for some built-in datasets).
 
-    $ pip install -U causaltensor
+---
+
+## Three ways to use CausalTensor
+
+| Track | When to use | Key API |
+|---|---|---|
+| **Real panels** | You have observed O and Z; want ATT estimates | `PanelDataset`, `*PanelSolver.fit()` |
+| **Synthetic DGP** | You want full ground-truth control over the data | `causaltensor.synthetic.generate` |
+| **Semi-synthetic benchmarking** | You want to evaluate estimators on your own data | `causaltensor.semi_synthetic.run_experiment` |
+
+---
+
+## Quick start
+
+```python
+from causaltensor.datasets import load_dataset
+from causaltensor.cauest.DID import DIDPanelSolver
+
+ds = load_dataset("smoking")          # California Prop 99 panel
+O, Z = ds.O, ds.Z
+
+result = DIDPanelSolver(O, Z).fit()
+print(f"ATT estimate: {result.tau:.3f}")
+print(f"Counterfactual shape: {result.baseline.shape}")
+```
+
+---
+
+## Seven estimators
+
+All seven estimators share the same two-step API: construct with `(O, Z)`, call `.fit()`.
+
+| Estimator | Class | `estimate()` key | Treatment patterns | Reference |
+|---|---|---|---|---|
+| Difference-in-Differences | `DIDPanelSolver` | `DID` | All | [Chamberlain 1982](http://web.mit.edu/insong/www/pdf/FEmatch-twoway.pdf) |
+| Synthetic Diff-in-Diffs | `SDIDPanelSolver` | `SDID` | Block, Staggered | [Arkhangelsky et al. 2021](https://arxiv.org/pdf/1812.09970.pdf) |
+| De-biased Convex PR | `DCPanelSolver` | `DC_PR_auto_rank` | All | [Farias, Li & Peng 2021](https://arxiv.org/abs/2106.02780) |
+| Matrix Completion NNM | `MCNNMPanelSolver` | `MC_NNM_CV` | Block, Staggered | [Athey et al. 2021](https://arxiv.org/abs/1710.10251) |
+| Covariance PCA | `CovariancePCAPanelSolver` | `CovariancePCA` | IID, Adaptive | [Xiong & Pelger 2019](https://arxiv.org/abs/1901.09056) |
+| OLS Synthetic Control | `OLSSCPanelSolver` | `SC` | Block | [Abadie & Gardeazabal 2003](http://www.jstor.org/stable/3132164) |
+| Robust Synthetic Control | `RSCPanelSolver` | `RobustSyntheticControl` | Block | [Amjad et al. 2018](https://arxiv.org/abs/1811.07426) |
+
+---
+
+## Tutorials
+
+Three self-contained notebooks cover each workflow end-to-end.
+
+### Track 1 -- Real observed panels
+Apply all seven estimators to built-in datasets (California Prop 99, Basque terrorism, German reunification). Covers data loading, fitting, and interactive counterfactual plots.
+
+[![Open in GitHub](https://img.shields.io/badge/Open-GitHub-black?logo=github)](https://github.com/TianyiPeng/causaltensor/blob/main/tutorials/guides/01_real_observed_panels.ipynb)
+[![Open In Colab](https://colab.research.google.com/assets/colab-badge.svg)](https://colab.research.google.com/github/TianyiPeng/causaltensor/blob/main/tutorials/guides/01_real_observed_panels.ipynb)
+
+### Track 2 -- Synthetic DGP
+Explore estimation accuracy under full experimental control: convergence as N/T grow, sensitivity to rank misspecification, and noise sensitivity.
+
+[![Open in GitHub](https://img.shields.io/badge/Open-GitHub-black?logo=github)](https://github.com/TianyiPeng/causaltensor/blob/main/tutorials/guides/02_synthetic_dgp.ipynb)
+[![Open In Colab](https://colab.research.google.com/assets/colab-badge.svg)](https://colab.research.google.com/github/TianyiPeng/causaltensor/blob/main/tutorials/guides/02_synthetic_dgp.ipynb)
+
+### Track 3 -- Semi-synthetic benchmarks
+Inject synthetic treatment effects into the Basque dataset and benchmark all seven methods across four treatment patterns (IID, Block, Staggered, Adaptive).
+
+[![Open in GitHub](https://img.shields.io/badge/Open-GitHub-black?logo=github)](https://github.com/TianyiPeng/causaltensor/blob/main/tutorials/guides/03_semi_synthetic_benchmarks.ipynb)
+[![Open In Colab](https://colab.research.google.com/assets/colab-badge.svg)](https://colab.research.google.com/github/TianyiPeng/causaltensor/blob/main/tutorials/guides/03_semi_synthetic_benchmarks.ipynb)
+
+---
 
 ## Built-in datasets
-`load_dataset` and `available_datasets()` cover case-study and PWT benchmark panels shipped under `causaltensor/datasets/raw`. Loader code for very large recommendation-style panels (retailrocket, dunnhumby, truus, movielens) remains in the package but those names are **not** registered in the dispatcher until row/column sampling is supported, so default workflows stay lightweight.
 
-## Using CausalTensor
-We have implemented the following estimators including the traditional method Difference-in-Difference and recent proposed methods such as Synthetic Difference-in-Difference, Matrix Completion with Nuclear Norm Minimization, and De-biased Convex Panel Regression.  
+```python
+from causaltensor.datasets import load_dataset, available_datasets
 
-| Estimator      | Reference |
-| ----------- | ----------- |
-| [Difference-in-Difference (DID)](https://en.wikipedia.org/wiki/Difference_in_differences) | [Implemented through two-way fixed effects regression.](http://web.mit.edu/insong/www/pdf/FEmatch-twoway.pdf)       |
-| [De-biased Convex Panel Regression (DC-PR)](https://arxiv.org/abs/2106.02780) | Vivek Farias, Andrew Li, and Tianyi Peng. "Learning treatment effects in panels with general intervention patterns." Advances in Neural Information Processing Systems 34 (2021): 14001-14013. |
-| [Synthetic Control (OLS SC)](http://www.jstor.org/stable/3132164)   | Abadie, Alberto, and Javier Gardeazabal. “The Economic Costs of Conflict: A Case Study of the Basque Country.” The American Economic Review 93, no. 1 (2003): 113–32. |
-| [Synthetic Difference-in-Difference (SDID)](https://arxiv.org/pdf/1812.09970.pdf)   | Dmitry Arkhangelsky, Susan Athey, David A. Hirshberg, Guido W. Imbens, and Stefan Wager. "Synthetic difference-in-differences." American Economic Review 111, no. 12 (2021): 4088-4118. |
-| [Matrix Completion with Nuclear Norm Minimization (MC-NNM)](https://arxiv.org/abs/1710.10251)| Susan Athey, Mohsen Bayati, Nikolay Doudchenko, Guido Imbens, and Khashayar Khosravi. "Matrix completion methods for causal panel data models." Journal of the American Statistical Association 116, no. 536 (2021): 1716-1730. |
+print(available_datasets())
+ds = load_dataset("basque")   # returns a PanelDataset with .O, .Z, .unit_names, .time_names
+```
 
-Please visit our [documentation](https://causaltensor.readthedocs.io/) for the usage instructions. Or check the following simple demo as a tutorial:
+Included panels: `smoking`, `basque`, `germany`, and others. See `PanelDataset` in the [API docs](https://causaltensor.readthedocs.io/).
 
-- [Panel Data Example](https://colab.research.google.com/github/TianyiPeng/causaltensor/blob/main/tutorials/Panel_Data_Example.ipynb)
-    - [Panel Data Example with old API](https://colab.research.google.com/github/TianyiPeng/causaltensor/blob/main/tutorials/Panel%20Data%20Example.ipynb)
-- [Panel Data with Multiple Treatments](https://colab.research.google.com/github/TianyiPeng/causaltensor/blob/main/tutorials/Panel_Regression_with_Multiple_Interventions.ipynb)
-- [MC-NNM with covariates and missing data](https://colab.research.google.com/github/TianyiPeng/causaltensor/blob/main/tests/MCNNM_test.ipynb)
+---
+
+## Documentation
+
+Full API reference, tutorial overviews, and installation notes at **[causaltensor.readthedocs.io](https://causaltensor.readthedocs.io/)**.
