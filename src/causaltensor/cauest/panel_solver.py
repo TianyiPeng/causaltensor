@@ -1,6 +1,6 @@
 import numpy as np
 from causaltensor.cauest.result import Result
-from causaltensor.matlib.util import transform_to_3D
+from causaltensor.utils.linalg import transform_to_3D
 
 class PanelSolver():
     def __init__(self, Z):
