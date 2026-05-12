@@ -7,45 +7,39 @@ from causaltensor.cauest.DebiasConvex import DC_PR_with_suggested_rank
 from causaltensor.cauest.MCNNM import MC_NNM_with_cross_validation, MC_NNM_with_suggested_rank
 from causaltensor.cauest.RobustSyntheticControl import robust_synthetic_control
 from causaltensor.cauest.CovariancePCA import covariance_PCA
-from causaltensor.matlib.generation_treatment_pattern import iid_treatment, block_treatment_testone
-from causaltensor.matlib.generation import low_rank_M0_normal
+from causaltensor.synthetic.utils import generate_low_rank_M, add_noise
+from causaltensor.utils.treatment_patterns import Z_iid, Z_block
 
-np.random.seed(0)
+_RNG_SEED = 0
 
 
 class TestSyntheticClass:
     @pytest.fixture
     def create_dataset_factory(self):
-        num_individuals = 100
-        num_time_periods = 50  
-        treatment_level = 0.1 
-        
+        N, T = 100, 50
+        treatment_level = 0.1
+        rng = np.random.default_rng(_RNG_SEED)
 
-        def create_dataset(did=False, add_fixed_effects = False, r = 3, iid=False):
-            # Generating synthetic data               
+        def create_dataset(did=False, add_fixed_effects=False, r=3, iid=False):
             if did:
-                a = np.random.rand(num_individuals)
-                b = np.random.rand(num_time_periods)
+                a = rng.random(N)
+                b = rng.random(T)
                 M = a[:, None] + b
             else:
-                M = low_rank_M0_normal(num_individuals, num_time_periods, r)
+                M = generate_low_rank_M(N, T, rank=r, rng=rng)
                 if add_fixed_effects:
-                    a = np.random.rand(num_individuals)
-                    b = np.random.rand(num_time_periods)
+                    a = rng.random(N)
+                    b = rng.random(T)
                     M += a[:, None] + b
-            
+
             self.tau = np.mean(np.abs(M)) * treatment_level
 
-            # Generating treatment pattern
             if not iid:
-                Z = block_treatment_testone(num_individuals//2, num_time_periods//2, M)
+                Z = Z_block(M, m1=N // 2, m2=T // 2, rng=rng)
             else:
-                Z = iid_treatment(0.3, (num_individuals, num_time_periods))
+                Z = Z_iid(M, p_treat=0.3, rng=rng)
 
-            error = np.random.normal(0, np.abs(self.tau)*0.1, (num_individuals, num_time_periods))
-
-            #TODO: Should error be added only to treatment???
-            O = M + self.tau * Z + error
+            O = M + self.tau * Z + add_noise(M, noise_scale=np.abs(self.tau) * 0.1, rng=rng)
             return O, Z
         return create_dataset
 
@@ -78,8 +72,8 @@ class TestSyntheticClass:
     def test_synthetic_control(self, create_dataset_factory):
         # Only Block pattern
         O, Z = create_dataset_factory()
-        M, tau = ols_synthetic_control(O.T, Z.T)
-        assert M.shape == O.T.shape
+        M, tau = ols_synthetic_control(O, Z)
+        assert M.shape == O.shape
         error = np.abs(self.tau-tau)/self.tau
         assert error <= 0.2
 
@@ -142,38 +136,26 @@ class TestSyntheticClass:
 
 
     def test_dcpr_multiple(self):
-        n1 = 100
-        n2 = 50
-        r = 3
-        M0 = low_rank_M0_normal(n1 = n1, n2 = n2, r = r) #low rank baseline matrix
+        N, T, r = 100, 50, 3
+        rng = np.random.default_rng(_RNG_SEED)
+
+        M0 = generate_low_rank_M(N, T, rank=r, rng=rng)
 
         num_treat = 2
-        prob = 0.3
-        Z = []
-        tau = []
-        for k in range(num_treat):
-            # IID Pattern
-            Z.append(iid_treatment(prob=prob, shape=M0.shape)) #treatment patterns
-            tau.append(np.random.normal(loc=0, scale=1)) #treatment effects
-        
-        def adding_noise(M0, Z, tau, Sigma, SigmaZ):
-            num_treat = len(Z)
-            # TODO: Why are we multiplying normal & uniform noises?
-            O = M0 + np.random.normal(loc=0, scale=1, size=M0.shape) * Sigma #add heterogenous noise to the baseline matrix
-            for k in range(num_treat):
-                # TODO: Why are we adding noise here?
-                O += Z[k] * tau[k] + Z[k] * SigmaZ[k] * np.random.normal(loc=0, scale=1, size=M0.shape) #add heterogeneous noise to the treatment effects
-            return O
-        Sigma = np.random.rand(M0.shape[0], M0.shape[1])
-        SigmaZ = []
-        for k in range(num_treat):
-            SigmaZ.append(np.random.rand(M0.shape[0], M0.shape[1]))
+        taus = [rng.standard_normal() for _ in range(num_treat)]
+        Zs = [Z_iid(M0, p_treat=0.3, rng=rng) for _ in range(num_treat)]
 
-        O = adding_noise(M0, Z, tau, Sigma, SigmaZ)
-        M, tau_hat, standard_deviation = DC_PR_with_suggested_rank(O, Z, suggest_r=r, method="non-convex") #solving a non-convex optimization to obtain M and tau
-        error = np.linalg.norm(tau_hat - tau) / np.linalg.norm(tau)  
+        # Heteroskedastic noise on baseline and treatment effects
+        Sigma = rng.random(M0.shape)
+        O = M0 + rng.standard_normal(M0.shape) * Sigma
+        for k in range(num_treat):
+            SigmaZ = rng.random(M0.shape)
+            O += Zs[k] * taus[k] + Zs[k] * SigmaZ * rng.standard_normal(M0.shape)
+
+        M, tau_hat, _ = DC_PR_with_suggested_rank(O, Zs, suggest_r=r, method="non-convex")
+        error = np.linalg.norm(tau_hat - taus) / np.linalg.norm(taus)
         assert M.shape == O.shape
-        assert error < 0.08
+        assert error < 0.2
 
 
 

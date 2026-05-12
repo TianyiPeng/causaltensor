@@ -16,7 +16,7 @@ from causaltensor.cauest.DID import DID
 from causaltensor.cauest.SDID import SDID
 from causaltensor.cauest.RobustSyntheticControl import robust_synthetic_control
 from causaltensor.cauest.OLSSyntheticControl import ols_synthetic_control
-from causaltensor.cauest.CovariancePCA import covariance_PCA
+from causaltensor.cauest.CovariancePCA import CovariancePCAPanelSolver
 
 
 def extract_treatment_info_from_Z(Y_df: pd.DataFrame, Z_df: pd.DataFrame | None):
@@ -100,11 +100,12 @@ def get_tau_from_method_with_error(method_name: str, O_syn: np.ndarray, Z: np.nd
             tau_hat = SDID(O_syn, Z)
         elif method_name == 'SC':
             # Synthetic control expects transposed inputs
-            _, tau_hat = ols_synthetic_control(O_syn.T, Z.T)
+            _, tau_hat = ols_synthetic_control(O_syn, Z)
         elif method_name == 'RobustSyntheticControl':
             _, tau_hat = robust_synthetic_control(O_syn, Z)
         elif method_name == 'CovariancePCA':
-            _, tau_hat = covariance_PCA(O_syn, Z, suggest_r=-1)
+            res = CovariancePCAPanelSolver(O_syn, Z).fit()
+            tau_hat = res.tau
         else:
             raise ValueError(f"Unknown method: {method_name}")
         return tau_hat, None

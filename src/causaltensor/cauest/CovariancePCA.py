@@ -56,7 +56,7 @@ def random_subset(Ω, K, m):
     return O_list
 
 
-def covariance_PCA(O, Z, Omega=None, suggest_r=-1, return_U=False):
+def covariance_PCA(O, Z, Omega=None, suggest_r=-1, return_U=False, seed=None):
     """
     Covariance PCA: low-rank ``M`` from outcomes, fit using only control cells
     ``(1 - Z) ⊙ Omega`` (same spirit as :class:`MCNNMPanelSolver`).
@@ -74,6 +74,10 @@ def covariance_PCA(O, Z, Omega=None, suggest_r=-1, return_U=False):
         Fixed rank if ``>= 1``. Use ``-1`` (default) for CV over ``r``.
     return_U : bool, optional
         If True, also return the left factor ``U``.
+    seed : int or None, optional
+        Random seed passed to :func:`random_subset` when ``suggest_r == -1``.
+        Passing an integer makes the CV rank selection deterministic.
+        Defaults to ``None`` (use current NumPy random state).
 
     Returns
     -------
@@ -148,6 +152,8 @@ def covariance_PCA(O, Z, Omega=None, suggest_r=-1, return_U=False):
         p = float(np.sum(omega_fit)) / np.size(omega_fit)
         m = int(np.sum(omega_fit) * p) + 1
         m = min(m, n_obs)
+        if seed is not None:
+            np.random.seed(seed)
         Ω_list = random_subset(omega_fit, K, m)
 
         energy = float(np.sum(s))
@@ -210,6 +216,16 @@ class CovariancePCAPanelSolver(PanelSolver):
         Extra observation mask (1 = data present). Defaults to all ones.
     suggest_r : int, optional
         Fixed rank if ``>= 1``; use ``-1`` (default) for CV.
+    seed : int or None, optional
+        Random seed for the cross-validation rank selection (only used when
+        ``suggest_r == -1``). Defaults to ``2`` for reproducible results.
+        Pass ``None`` to use the current NumPy random state.
+
+    Notes
+    -----
+    When ``suggest_r == -1`` the CV uses two random observation-mask splits to
+    score each candidate rank. The result is sensitive to the random subsets on
+    small panels; ``seed`` pins the subsets for reproducibility.
 
     Examples
     --------
@@ -219,11 +235,12 @@ class CovariancePCAPanelSolver(PanelSolver):
     >>> result.baseline   # low-rank counterfactual panel
     """
 
-    def __init__(self, O, Z, Omega=None, suggest_r=-1):
+    def __init__(self, O, Z, Omega=None, suggest_r=-1, seed=2):
         self.O = np.asarray(O, dtype=float)
         self.Z = np.asarray(Z, dtype=float)
         self.Omega = Omega
         self.suggest_r = suggest_r
+        self.seed = seed
 
     def fit(self):
         """
@@ -241,5 +258,6 @@ class CovariancePCAPanelSolver(PanelSolver):
             Omega=self.Omega,
             suggest_r=self.suggest_r,
             return_U=True,
+            seed=self.seed,
         )
         return CovariancePCAResult(baseline=M, tau=tau, U=U)

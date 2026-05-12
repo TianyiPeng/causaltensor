@@ -62,8 +62,8 @@ class TestSC:
     def test_shape_and_finite(self):
         from causaltensor.cauest.OLSSyntheticControl import ols_synthetic_control
         O, Z, _ = _panel(seed=3)
-        M_hat, tau_hat = ols_synthetic_control(O.T, Z.T)
-        assert M_hat.shape == O.T.shape
+        M_hat, tau_hat = ols_synthetic_control(O, Z)
+        assert M_hat.shape == O.shape
         assert np.isfinite(tau_hat)
 
 
@@ -94,12 +94,12 @@ class TestDCPR:
 
     def test_multiple_treatments(self):
         from causaltensor.cauest.DebiasConvex import DC_PR_with_suggested_rank
-        from causaltensor.matlib.generation_treatment_pattern import iid_treatment
         from causaltensor.synthetic.utils import generate_low_rank_M, add_noise
+        from causaltensor.utils.treatment_patterns import Z_iid
         rng = np.random.default_rng(42)
         M = generate_low_rank_M(_N, _T, rank=3, mean=2.0, rng=rng)
-        Z1 = iid_treatment(0.2, M.shape)
-        Z2 = iid_treatment(0.2, M.shape)
+        Z1 = Z_iid(M, p_treat=0.2, rng=rng)
+        Z2 = Z_iid(M, p_treat=0.2, rng=rng)
         tau1, tau2 = 1.0, -0.5
         O = M + Z1 * tau1 + Z2 * tau2 + add_noise(M, noise_scale=0.1, rng=rng)
         M_hat, tau_hat, _ = DC_PR_with_suggested_rank(O, [Z1, Z2], suggest_r=3,

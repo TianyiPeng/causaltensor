@@ -15,8 +15,23 @@ Contents
 --------
 
 .. toctree::
+   :maxdepth: 2
+   :caption: Getting Started
 
    usage
+
+.. toctree::
+   :maxdepth: 1
+   :caption: Tutorials
+
+   tutorials/01_real_observed_panels
+   tutorials/02_synthetic_dgp
+   tutorials/03_semi_synthetic_benchmarks
+
+.. toctree::
+   :maxdepth: 2
+   :caption: Reference
+
    api
    ref
    changelog

@@ -10,7 +10,7 @@ from causaltensor.cauest.result import Result
     Credit to Andy Zheng for the revised version, 2022/01/15
     
     [1] Arkhangelsky, Dmitry, Susan Athey, David A. Hirshberg, Guido W. Imbens, and Stefan Wager. 2021. 
-        "Synthetic Difference-in-Differences." American Economic Review, 111 (12): 4088–4118
+        "Synthetic Difference-in-Differences." American Economic Review, 111 (12): 4088-4118
 '''
 class SDIDResult(Result):
     def __init__(self, baseline = None, tau=None, beta=None, row_fixed_effects=None, column_fixed_effects=None, return_tau_scalar=False):
@@ -23,21 +23,46 @@ class SDIDResult(Result):
 
 
 class SDIDPanelSolver(PanelSolver):
-    def __init__(self, Z=None, O=None, X_cov=None, treat_units = [-1], starting_time = -1):
-        '''
-        Input: 
-            O: nxT observation matrix
-            Z: nxT binary treatment matrix  
-            X_cov: n x T x p array of exogenous covariates (optional). If provided,
-                    the algorithm will first compute residuals:
-                        Y_res = Y - X_cov * beta_t   (for each time t)
-                    where beta_t is obtained by regressing Y[:,t] on X_cov[:,t] (with an intercept).
-                    This is based on footnote number 4 from [1]
-            treat_units: a list containing elements in [0, 1, 2, ..., n-1]
-            starting_time: for treat_units, pre-treatment time is 0, 1, .., starting_time-1
-        Output:
-            the average treatment effect estimated by [1] 
-        '''
+    """
+    Synthetic Difference-in-Differences (SDID).
+
+    Computes unit weights ``w`` (matching pre-treatment trends) and time
+    weights ``l`` (down-weighting periods far from the treatment onset), then
+    applies a weighted two-way fixed-effects regression to estimate the ATT
+    (Arkhangelsky et al., 2021).
+
+    Parameters
+    ----------
+    O : ndarray, shape (N, T)
+        Observed outcome panel (units x time).
+    Z : ndarray, shape (N, T)
+        Binary treatment mask (1 = treated, block / staggered).
+    X_cov : ndarray, shape (N, T, P), optional
+        Exogenous time-varying covariates.  When provided, the algorithm
+        first residualises outcomes against ``X_cov`` at each time period
+        (see footnote 4 in Arkhangelsky et al.).
+    treat_units : list of int, optional
+        Indices of treated rows.  Inferred automatically from ``Z`` when set
+        to ``[-1]`` (default).
+    starting_time : int, optional
+        Column index of the first treated period.  Inferred automatically
+        from ``Z`` when set to ``-1`` (default).
+
+    References
+    ----------
+    Arkhangelsky, D., Athey, S., Hirshberg, D., Imbens, G., & Wager, S.
+    (2021). Synthetic difference-in-differences. *American Economic Review*,
+    111(12), 4088-4118.
+
+    Examples
+    --------
+    >>> solver = SDIDPanelSolver(O, Z)
+    >>> result = solver.fit()
+    >>> result.tau       # ATT scalar
+    >>> result.baseline  # weighted counterfactual surface (N x T)
+    """
+
+    def __init__(self, O=None, Z=None, X_cov=None, treat_units = [-1], starting_time = -1):
         super().__init__(Z)
         if self.Z.shape[2] == 1:
             self.Z = self.Z.reshape(self.Z.shape[0], self.Z.shape[1])
@@ -169,7 +194,21 @@ class SDIDPanelSolver(PanelSolver):
         return tau, M, True
 
     def fit(self):
+        """
+        Estimate ATT via SDID.
 
+        Returns
+        -------
+        SDIDResult
+            ``.tau``      -- ATT scalar.
+            ``.baseline`` / ``.M`` -- weighted fixed-effects surface (N x T).
+
+        Raises
+        ------
+        RuntimeError
+            If CVXPY fails to find a feasible solution for both the original
+            and variance-normalised panels.
+        """
         if self.X_cov is not None:
             self.adjust_for_covariates()
 
@@ -202,6 +241,6 @@ class SDIDPanelSolver(PanelSolver):
     
 # backward compatibility
 def SDID(O, Z, X_cov=None, treat_units = [-1], starting_time = -1):
-    solver = SDIDPanelSolver(Z, O, X_cov, treat_units, starting_time)
+    solver = SDIDPanelSolver(O, Z, X_cov, treat_units, starting_time)
     res = solver.fit()
     return res.tau

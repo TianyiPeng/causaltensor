@@ -1,5 +1,5 @@
 """
-Synthetic control via constrained least squares (Abadie–Diamond–Hainmueller style).
+Synthetic control via constrained least squares (Abadie-Diamond-Hainmueller style).
 
 Weights on donor units are chosen to minimize pre-period outcome error subject to
 simplex constraints; optional covariates enter a nested predictor-reweighting step.
@@ -45,13 +45,13 @@ class OLSSCPanelSolver(PanelSolver):
 
     Parameters
     ----------
-    Y : ndarray, shape (T, N)
-        Panel outcomes (time × units).
-    Z : ndarray, shape (T, N)
+    Y : ndarray, shape (N, T)
+        Panel outcomes (units x time).
+    Z : ndarray, shape (N, T)
         Treatment indicators; first period with any ``Z==1`` defines the end of
         the pre-period for all units (common ``T0`` index).
-    X : ndarray, shape (K, N), optional
-        Time-invariant covariates per unit (same column order as ``Y``).
+    X : ndarray, shape (N, K), optional
+        Time-invariant covariates per unit (same row order as ``Y``).
     pval : bool, optional
         If True, run a placebo-style comparison and attach approximate p-values
         to unit-level effects. Only supported when ``X is None`` (no covariates).
@@ -62,8 +62,9 @@ class OLSSCPanelSolver(PanelSolver):
             raise ValueError(
                 "pval=True is only supported when X is None (no covariates)."
             )
-        self.Y = Y
-        self.X = X
+        # All internal logic uses (T, N) convention; transpose (N, T) inputs once here.
+        self.Y = np.asarray(Y, dtype=float).T
+        self.X = np.asarray(X, dtype=float).T if X is not None else None
         (
             self.T0,
             self.Y0,
@@ -72,7 +73,7 @@ class OLSSCPanelSolver(PanelSolver):
             self.X1,
             self.control_units,
             self.treatment_units,
-        ) = self.preprocess(Z)
+        ) = self.preprocess(np.asarray(Z, dtype=float).T)
         self.individual_te = np.zeros(len(self.treatment_units))
         self.pval = pval
 
@@ -83,14 +84,14 @@ class OLSSCPanelSolver(PanelSolver):
         Parameters
         ----------
         Z : ndarray, shape (T, N)
-            Treatment matrix.
+            Treatment matrix (already transposed to internal convention).
 
         Returns
         -------
         T0 : int
             Index of the first period with any treatment (pre-period is ``0:T0``).
         Y0 : ndarray
-            Control columns of ``Y`` (time × n_control).
+            Control columns of ``Y`` (time x n_control).
         Y1 : ndarray
             Treated columns of ``Y``.
         X0, X1 : ndarray or None
@@ -209,7 +210,18 @@ class OLSSCPanelSolver(PanelSolver):
         return M, tau, W, V
 
     def fit(self):
-        """Estimate counterfactuals and (optional) unit-level placebo p-values."""
+        """
+        Estimate counterfactuals and (optional) unit-level placebo p-values.
+
+        Returns
+        -------
+        OLSSCResult
+            Result object.  Key attributes: ``tau`` (average ATT float),
+            ``baseline`` (counterfactual panel N x T), ``individual_te``
+            (per-unit ``[unit_idx, tau_hat]`` list, extended to
+            ``[unit_idx, tau_hat, p_value]`` when ``pval=True``),
+            ``beta`` (list of simplex weight vectors).
+        """
         T = len(self.Y1)
         V = []
         weights = []
@@ -238,7 +250,7 @@ class OLSSCPanelSolver(PanelSolver):
             self.individual_te = self.permutation_test()
 
         return OLSSCResult(
-            baseline=M,
+            baseline=M.T,  # return (N, T) to match all other solvers
             tau=tau,
             individual_te=self.individual_te,
             beta=weights,
@@ -290,16 +302,16 @@ def ols_synthetic_control(O, Z, X=None):
 
     Parameters
     ----------
-    O : ndarray, shape (T, N)
-        Outcomes (time × units).
-    Z : ndarray, shape (T, N)
+    O : ndarray, shape (N, T)
+        Outcomes (units x time).
+    Z : ndarray, shape (N, T)
         Treatment indicators.
-    X : ndarray, optional
-        Covariates if used.
+    X : ndarray, shape (N, K), optional
+        Time-invariant covariates per unit.
 
     Returns
     -------
-    M : ndarray
+    M : ndarray, shape (N, T)
         Counterfactual panel (same shape as ``O``).
     tau : float
         Average treated-unit effect (mean of unit-level ATTs).

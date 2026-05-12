@@ -1,6 +1,6 @@
 import numpy as np
-from causaltensor.matlib.util import transform_to_3D
-import causaltensor.matlib.util as util
+from causaltensor.utils.linalg import transform_to_3D
+import causaltensor.utils.linalg as util
 from causaltensor.cauest.panel_solver import FixedEffectPanelSolver
 from causaltensor.cauest.panel_solver import PanelSolver
 from causaltensor.cauest.result import Result
@@ -49,25 +49,60 @@ class MCNNMResult(Result):
         self.M = M # the low-rank component of the baseline model
 
 class MCNNMPanelSolver(PanelSolver):
-    """ 
-    Solve the matrix completion problem with nuclear norm regularizer and fixed effects for panel data with covariates and missing data
-        reference: https://arxiv.org/pdf/1710.10251.pdf
+    """
+    Matrix Completion with Nuclear Norm Minimisation (MC-NNM).
+
+    Recovers a low-rank outcome matrix under a nuclear-norm penalty, jointly
+    estimating row / column fixed effects and optional covariate coefficients
+    on the control cells ``(1 - Z) ⊙ Omega``.  Regularisation is chosen by
+    K-fold cross-validation (Athey et al., 2021).
+
+    Parameters
+    ----------
+    O : ndarray, shape (N, T)
+        Observed outcome panel (units x time).
+    Z : ndarray, shape (N, T), dtype bool or {0, 1}
+        Binary treatment mask.
+    X : ndarray, shape (N, T, K) or (N, T) or list of ndarray, optional
+        Time-varying covariates.
+    Omega : ndarray, shape (N, T), dtype bool, optional
+        Observation mask (1 = present).  Defaults to all ones.
+    fixed_effects : str, optional
+        ``'two-way'`` (default).
+
+    References
+    ----------
+    Athey, S., Bayati, M., Doudchenko, N., Imbens, G., & Khosravi, K. (2021).
+    Matrix completion methods for causal panel data models. *JASA*, 116(536),
+    1716-1730.
+
+    Examples
+    --------
+    >>> solver = MCNNMPanelSolver(O, Z)
+    >>> result = solver.fit()          # runs cross-validation by default
+    >>> result.tau                     # ATT estimate
+    >>> result.baseline                # low-rank + FE counterfactual (N x T)
     """
 
-    def __init__(self, Z=None, X=None, Omega=None, fixed_effects = 'two-way'):
+    def __init__(self, O=None, Z=None, X=None, Omega=None, fixed_effects = 'two-way'):
         """
-        Z: 2D bool numpy array
-            The treatment matrix.
-            TODO: support multiple treatments for matrix completion algorithm
-            TODO: support non-binary treatment matrix
-        X: 3D float numpy array (n,m,p) or 2D float numpy array (n,m) or a list of 2D float numpy array
-            The covariates matrix. The last dimension is the index of covariates.
-        Omega: 2D bool numpy array (n,m)
-            Indicator matrix (1: observed, 0: missing).
-            The indicator matrix includes both the treated entries and untreated entries.
-        fixed_effects: ['two-way']
-            two-way fixed effects or one-way fixed effects (to be implemented)
+        Parameters
+        ----------
+        O : ndarray, shape (N, T)
+            Observed outcome panel (units x time).
+        Z : ndarray, shape (N, T), dtype bool or {0, 1}
+            Binary treatment mask.  Only block / single-treated-row patterns
+            are supported (multiple-treatment extension is a TODO).
+        X : ndarray, shape (N, T, K) or (N, T) or list of ndarray, optional
+            Time-varying covariates; last dimension is the covariate index.
+        Omega : ndarray, shape (N, T), dtype bool, optional
+            Observation mask (1 = present, 0 = missing).  Defaults to all ones.
+            Treated entries are internally re-classified as *missing* for the
+            MC objective.
+        fixed_effects : str, optional
+            ``'two-way'`` (default).  One-way support is not yet implemented.
         """
+        self.O = O
         if (Omega is None):
             Omega = np.ones_like(Z[:, :], dtype=bool)
         Omega = Omega.astype(bool)
@@ -87,32 +122,56 @@ class MCNNMPanelSolver(PanelSolver):
         self.FE_beta_solver = FixedEffectPanelSolver(fixed_effects=self.fixed_effects, X=self.X, Omega=self.Omega)
         self.return_tau_scalar = False
 
-    def solve_with_regularizer(self, O=None, l=None, M_init=None, eps=1e-7, max_iter=2000):
-        """ Solve the matrix completion problem with nuclear norm regularizer and fixed effects
+    def fit(self, cross_validation=True, K=2, list_l=None):
+        """Fit the MC-NNM model.
+
         Parameters
         ----------
-        O: 2D numpy array
-            the observation matrix
-        l: float
-            Nuclear norm regularizer.
-        M_init: 2D numpy array or None
-            Initial guess of the underlying low-rank matrix.
-        eps: float 
-            Convergence threshold.
-        max_iter: int
-            Maximum number of iterations.
+        cross_validation : bool, optional
+            If True (default), select the regularization parameter via K-fold
+            cross-validation as in Athey et al. (2021). If False, fall back to
+            the fixed regularizer stored in the solver (not recommended without
+            specifying ``list_l``).
+        K : int, optional
+            Number of cross-validation folds (default 2).
+        list_l : list of float or None, optional
+            Candidate regularization values; auto-selected when None.
+
         Returns
         -------
-        res: Result
-            res.M: 2D numpy array
-                The estimated low-rank matrix.
-            res.row_fixed_effects: 2D numpy array (n, 1)
-            res.column_fixed_effects: 2D numpy array (m, 1)
-            res.beta: 1D numpy array (p, ) if X is not None
-            res.baseline_model: 2D numpy array
-                The estimated baseline model (M+ai+bj+beta*X).
-            res.tau: float
-                The estimated treatment effect.
+        MCNNMResult
+        """
+        if self.O is None:
+            raise ValueError("O must be provided at construction time: MCNNMPanelSolver(O, Z)")
+        if cross_validation:
+            return self.solve_with_cross_validation(self.O, K=K, list_l=list_l)
+        else:
+            if list_l is not None and len(list_l) > 0:
+                return self.solve_with_regularizer(self.O, l=list_l[0])
+            raise ValueError("Provide list_l when cross_validation=False")
+
+    def solve_with_regularizer(self, O=None, l=None, M_init=None, eps=1e-7, max_iter=2000):
+        """Solve the matrix completion problem with a fixed nuclear-norm regulariser.
+
+        Parameters
+        ----------
+        O : ndarray, shape (N, T)
+            Observed outcome panel.
+        l : float
+            Nuclear-norm regularisation strength.
+        M_init : ndarray or None, optional
+            Warm-start for the low-rank matrix.
+        eps : float, optional
+            Convergence threshold (default 1e-7).
+        max_iter : int, optional
+            Maximum number of alternating iterations (default 2000).
+
+        Returns
+        -------
+        MCNNMResult
+            Result with ``tau`` (ATT), ``baseline`` (M + FE panel),
+            ``M`` (low-rank component), ``row_fixed_effects``,
+            ``column_fixed_effects``, and ``beta`` (covariate coefficients).
         """
         M = M_init
         if M is None:
