@@ -54,9 +54,11 @@ class MCNNMPanelSolver(PanelSolver):
         reference: https://arxiv.org/pdf/1710.10251.pdf
     """
 
-    def __init__(self, Z=None, X=None, Omega=None, fixed_effects = 'two-way'):
+    def __init__(self, O=None, Z=None, X=None, Omega=None, fixed_effects = 'two-way'):
         """
-        Z: 2D bool numpy array
+        O: 2D float numpy array (N, T)
+            The outcome matrix.
+        Z: 2D bool numpy array (N, T)
             The treatment matrix.
             TODO: support multiple treatments for matrix completion algorithm
             TODO: support non-binary treatment matrix
@@ -68,6 +70,7 @@ class MCNNMPanelSolver(PanelSolver):
         fixed_effects: ['two-way']
             two-way fixed effects or one-way fixed effects (to be implemented)
         """
+        self.O = O
         if (Omega is None):
             Omega = np.ones_like(Z[:, :], dtype=bool)
         Omega = Omega.astype(bool)
@@ -86,6 +89,34 @@ class MCNNMPanelSolver(PanelSolver):
         self.fixed_effects = fixed_effects
         self.FE_beta_solver = FixedEffectPanelSolver(fixed_effects=self.fixed_effects, X=self.X, Omega=self.Omega)
         self.return_tau_scalar = False
+
+    def fit(self, cross_validation=True, K=2, list_l=None):
+        """Fit the MC-NNM model.
+
+        Parameters
+        ----------
+        cross_validation : bool, optional
+            If True (default), select the regularization parameter via K-fold
+            cross-validation as in Athey et al. (2021). If False, fall back to
+            the fixed regularizer stored in the solver (not recommended without
+            specifying ``list_l``).
+        K : int, optional
+            Number of cross-validation folds (default 2).
+        list_l : list of float or None, optional
+            Candidate regularization values; auto-selected when None.
+
+        Returns
+        -------
+        MCNNMResult
+        """
+        if self.O is None:
+            raise ValueError("O must be provided at construction time: MCNNMPanelSolver(O, Z)")
+        if cross_validation:
+            return self.solve_with_cross_validation(self.O, K=K, list_l=list_l)
+        else:
+            if list_l is not None and len(list_l) > 0:
+                return self.solve_with_regularizer(self.O, l=list_l[0])
+            raise ValueError("Provide list_l when cross_validation=False")
 
     def solve_with_regularizer(self, O=None, l=None, M_init=None, eps=1e-7, max_iter=2000):
         """ Solve the matrix completion problem with nuclear norm regularizer and fixed effects

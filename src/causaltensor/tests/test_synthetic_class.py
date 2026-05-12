@@ -78,8 +78,8 @@ class TestSyntheticClass:
     def test_synthetic_control(self, create_dataset_factory):
         # Only Block pattern
         O, Z = create_dataset_factory()
-        M, tau = ols_synthetic_control(O.T, Z.T)
-        assert M.shape == O.T.shape
+        M, tau = ols_synthetic_control(O, Z)
+        assert M.shape == O.shape
         error = np.abs(self.tau-tau)/self.tau
         assert error <= 0.2
 

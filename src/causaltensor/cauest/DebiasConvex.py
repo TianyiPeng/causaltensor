@@ -12,7 +12,7 @@ class DCResult(Result):
         self.M = baseline # for backward compatability
 
 class DCPanelSolver(PanelSolver):
-    def __init__(self, Z=None, O=None, suggest_r=None):
+    def __init__(self, O=None, Z=None, suggest_r=None):
         """
         De-biased Convex Panel Regression with the regularizer l. 
 
@@ -259,11 +259,11 @@ class DCPanelSolver(PanelSolver):
 
 # backward compatibility
 def DC_PR_auto_rank(O, Z, spectrum_cut = 0.002, method='convex', method_non_neg=None):
-    solver = DCPanelSolver(Z, O)
+    solver = DCPanelSolver(O, Z)
     res = solver.fit(spectrum_cut=spectrum_cut, method=method, method_non_neg=method_non_neg)
     return res.M, res.tau, res.std
 
 def DC_PR_with_suggested_rank(O, Z, suggest_r = 1, method = 'convex', method_non_neg=None):
-    solver = DCPanelSolver(Z, O)
+    solver = DCPanelSolver(O, Z)
     res = solver.fit(auto_rank=False, suggest_r=suggest_r, method=method, method_non_neg=method_non_neg)
     return res.M, res.tau, res.std

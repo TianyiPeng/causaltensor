@@ -44,12 +44,12 @@ class TestRealClass:
     def test_synthetic_control(self, create_dataset):
         O, Z, X = create_dataset
         # SC on only outcomes
-        M, tau = ols_synthetic_control(O.T, Z.T)
-        assert M.shape == O.T.shape
+        M, tau = ols_synthetic_control(O, Z)
+        assert M.shape == O.shape
         assert tau <= -10 and tau >= -20
         # SC on predictors
-        M, tau = ols_synthetic_control(O.T, Z.T, X.T)
-        assert M.shape == O.T.shape
+        M, tau = ols_synthetic_control(O, Z, X)
+        assert M.shape == O.shape
         assert tau <= -10 and tau >= -20
 
  

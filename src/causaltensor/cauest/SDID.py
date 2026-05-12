@@ -23,7 +23,7 @@ class SDIDResult(Result):
 
 
 class SDIDPanelSolver(PanelSolver):
-    def __init__(self, Z=None, O=None, X_cov=None, treat_units = [-1], starting_time = -1):
+    def __init__(self, O=None, Z=None, X_cov=None, treat_units = [-1], starting_time = -1):
         '''
         Input: 
             O: nxT observation matrix
@@ -202,6 +202,6 @@ class SDIDPanelSolver(PanelSolver):
     
 # backward compatibility
 def SDID(O, Z, X_cov=None, treat_units = [-1], starting_time = -1):
-    solver = SDIDPanelSolver(Z, O, X_cov, treat_units, starting_time)
+    solver = SDIDPanelSolver(O, Z, X_cov, treat_units, starting_time)
     res = solver.fit()
     return res.tau

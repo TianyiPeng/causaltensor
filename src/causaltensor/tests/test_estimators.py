@@ -62,8 +62,8 @@ class TestSC:
     def test_shape_and_finite(self):
         from causaltensor.cauest.OLSSyntheticControl import ols_synthetic_control
         O, Z, _ = _panel(seed=3)
-        M_hat, tau_hat = ols_synthetic_control(O.T, Z.T)
-        assert M_hat.shape == O.T.shape
+        M_hat, tau_hat = ols_synthetic_control(O, Z)
+        assert M_hat.shape == O.shape
         assert np.isfinite(tau_hat)
 
 
