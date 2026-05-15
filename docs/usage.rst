@@ -43,7 +43,7 @@ See :doc:`api` for the full list of estimators and their parameters.
 Tutorial Notebooks
 ------------------
 
-Three Jupyter notebooks walk through the main use cases in depth.  They are
+Four Jupyter notebooks walk through the main use cases in depth.  They are
 available in the ``tutorials/guides/`` folder of the repository.
 
 Track 1 -- Real Observed Panels
@@ -82,6 +82,22 @@ Block, Staggered, Adaptive).  Covers:
 * Running ``run_experiment`` for each method x pattern combination.
 * Summarising relative error with heatmaps and box plots.
 * A/A tests to check false-positive rates.
+
+Track 4 -- Inspecting Result Objects
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+**Notebook:** ``tutorials/guides/04_inspecting_results.ipynb``
+
+A complete tour of everything the ``fit()`` return value exposes, using a
+synthetic panel with a known ground-truth ATT throughout.  Covers:
+
+* ``result.summary()`` — formatted diagnostics table for all seven estimators.
+* ``result.plot_actual_vs_counterfactual(unit)`` — interactive Plotly chart.
+* Common attributes: ``tau``, ``baseline``, ``residuals``, ``z_pattern``, and
+  all diagnostic properties (``untreated_r2``, ``control_rmse``, etc.).
+* Estimator-specific attributes: DID / SDID / MC-NNM fixed effects; SDID donor
+  and time weights; MC-NNM low-rank component; DC-PR sandwich SE; OLS SC donor
+  weight vectors and per-unit ATT; CovPCA factor matrix.
 
 Seven Estimators at a Glance
 -----------------------------

@@ -27,6 +27,7 @@ Contents
    tutorials/01_real_observed_panels
    tutorials/02_synthetic_dgp
    tutorials/03_semi_synthetic_benchmarks
+   tutorials/04_inspecting_results
 
 .. toctree::
    :maxdepth: 2
