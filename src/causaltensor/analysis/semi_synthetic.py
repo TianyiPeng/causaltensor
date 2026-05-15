@@ -4,6 +4,7 @@ from pathlib import Path
 from causaltensor.semi_synthetic.experiment import run_experiment
 from causaltensor.utils.common import extract_treatment_info_from_Z
 from causaltensor.datasets.dataset_loader import load_dataset
+from causaltensor.utils.panel import default_raw_datasets_path
 
 
 def run_semi_synthetic_experiment(O, treated_states, treat_start_years,
@@ -140,7 +141,7 @@ def main(dataset_name="smoking"):
         Any name accepted by :func:`causaltensor.datasets.load_dataset`.
     """
     print(f"Loading dataset: {dataset_name}")
-    Y_df, Z_df, _X_df = load_dataset(dataset_name)
+    Y_df, Z_df, _X_df = load_dataset(dataset_name, datasets_path=default_raw_datasets_path())
 
     O = Y_df.values
 

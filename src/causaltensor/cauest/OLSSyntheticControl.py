@@ -6,11 +6,38 @@ simplex constraints; optional covariates enter a nested predictor-reweighting st
 """
 
 import numpy as np
+import cvxpy as cp
 from scipy.optimize import fmin_slsqp
-from sklearn.metrics import mean_squared_error
 
 from causaltensor.cauest.panel_solver import PanelSolver
 from causaltensor.cauest.result import Result
+
+
+def _solve_simplex_qp(y_c: np.ndarray, y_t: np.ndarray) -> np.ndarray:
+    """Solve ``min ||y_t - y_c @ W||²  s.t. W >= 0, sum(W) = 1``."""
+    W_var = cp.Variable(y_c.shape[1])
+    prob = cp.Problem(
+        cp.Minimize(cp.sum_squares(y_t - y_c @ W_var)),
+        [W_var >= 0, cp.sum(W_var) == 1],
+    )
+    prob.solve(solver=cp.CLARABEL)
+    return np.clip(np.asarray(W_var.value, dtype=float), 0.0, None)
+
+
+def _solve_simplex_qp_weighted(X0: np.ndarray, X1: np.ndarray,
+                                V: np.ndarray) -> np.ndarray:
+    """Solve ``min sum_k V_k*(X1_k - X0_k @ W)²  s.t. W >= 0, sum(W) = 1``.
+
+    ``X0`` is (K, n_control), ``X1`` is (K,), ``V`` is (K,) predictor weights.
+    """
+    sqrtV = np.sqrt(np.maximum(V, 0.0))
+    W_var = cp.Variable(X0.shape[1])
+    prob = cp.Problem(
+        cp.Minimize(cp.sum_squares(cp.multiply(sqrtV, X1 - X0 @ W_var))),
+        [W_var >= 0, cp.sum(W_var) == 1],
+    )
+    prob.solve(solver=cp.CLARABEL)
+    return np.clip(np.asarray(W_var.value, dtype=float), 0.0, None)
 
 
 def _slsqp_minimizer(out):
@@ -141,69 +168,40 @@ class OLSSCPanelSolver(PanelSolver):
         V : ndarray or None
             Predictor weights if covariates are used; otherwise None.
         """
-        def loss_v(W, y_c, y_t):
-            return np.mean((y_t - y_c.dot(W)) ** 2)
-
-        def w_eq_simplex(W, y_c, y_t):
-            del y_c, y_t
-            return np.sum(W) - 1.0
-
         y_c = Y0[: self.T0]
         y_t = Y1[: self.T0]
-        w_start = np.array([1.0 / y_c.shape[1]] * y_c.shape[1])
 
         if X1 is not None:
-            v_start = np.array([1.0 / X0.shape[0]] * X0.shape[0])
+            # Covariate path: alternate between optimising W (donor weights) and
+            # V (predictor importance weights).  V lives in a low-dimensional
+            # space (K covariates), so the outer loop over V stays with SLSQP;
+            # only the inner high-dimensional W optimisation is replaced.
+            v_start = np.full(X0.shape[0], 1.0 / X0.shape[0])
 
-            def v_eq_simplex(V, W, X0, X1, y_c, y_t):
-                del W, X0, X1, y_c, y_t
+            def optimize_W(V):
+                return _solve_simplex_qp_weighted(X0, X1, V)
+
+            def loss_v_at_V(V_raw):
+                W_at_v = optimize_W(np.clip(V_raw, 0.0, None))
+                r = y_t - y_c.dot(W_at_v)
+                return float(r.dot(r)) / len(y_t)
+
+            def v_eq_simplex(V):
                 return np.sum(V) - 1.0
 
-            def w_eq_with_V(W, V, X0, X1):
-                del V, X0, X1
-                return np.sum(W) - 1.0
-
-            def loss_w(W, V, X0, X1):
-                return mean_squared_error(X1, X0.dot(W), sample_weight=V)
-
-            def optimize_W(W, V, X0, X1):
-                out = fmin_slsqp(
-                    loss_w,
-                    W,
-                    bounds=[(0.0, 1.0)] * len(W),
-                    f_eqcons=w_eq_with_V,
-                    args=(V, X0, X1),
-                    disp=False,
-                    full_output=True,
-                )
-                return _slsqp_minimizer(out)
-
-            def optimize_V(V, W, X0, X1, y_c, y_t):
-                w_at_v = optimize_W(W, V, X0, X1)
-                return loss_v(w_at_v, y_c, y_t)
-
             V_out = fmin_slsqp(
-                optimize_V,
+                loss_v_at_V,
                 v_start,
-                args=(w_start, X0, X1, y_c, y_t),
                 bounds=[(0.0, 1.0)] * len(v_start),
-                disp=False,
                 f_eqcons=v_eq_simplex,
                 acc=1e-6,
-            )
-            V = _slsqp_minimizer(V_out)
-            W = optimize_W(w_start, V, X0, X1)
-        else:
-            V = None
-            W_out = fmin_slsqp(
-                loss_v,
-                w_start,
-                args=(y_c, y_t),
-                f_eqcons=w_eq_simplex,
-                bounds=[(0.0, 1.0)] * len(w_start),
                 disp=False,
             )
-            W = _slsqp_minimizer(W_out)
+            V = _slsqp_minimizer(V_out)
+            W = optimize_W(V)
+        else:
+            V = None
+            W = _solve_simplex_qp(y_c, y_t)
 
         M = Y0 @ W
         tau = np.mean((Y1 - M)[self.T0 :])

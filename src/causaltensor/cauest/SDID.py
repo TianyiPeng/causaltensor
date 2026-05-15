@@ -139,8 +139,8 @@ class SDIDPanelSolver(PanelSolver):
             cp.Minimize(
                 cp.sum_squares(w0 + X[self.donor_units, :Tpre].T @ w - mean_treat)
                 + z_square * Tpre * cp.sum_squares(w)),
-            [np.eye(Nco) @ w >= 0, np.ones(Nco).T @ w == 1])
-        prob.solve()
+            [w >= 0, cp.sum(w) == 1])
+        prob.solve(solver=cp.CLARABEL)
 
         if w.value is None:
             return None, None, False
@@ -156,8 +156,8 @@ class SDIDPanelSolver(PanelSolver):
         prob = cp.Problem(
             cp.Minimize(
                 cp.sum_squares(l0 + X[self.donor_units, :Tpre] @ l - mean_treat)),
-            [np.eye(Tpre) @ l >= 0, np.ones(Tpre).T @ l == 1])
-        prob.solve()
+            [l >= 0, cp.sum(l) == 1])
+        prob.solve(solver=cp.CLARABEL)
 
         if l.value is None:
             return None, None, False

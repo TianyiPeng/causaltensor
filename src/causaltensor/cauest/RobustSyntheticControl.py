@@ -50,10 +50,9 @@ def stagger_pattern_RSC(O, Z, suggest_r=1):
     Mhat = np.zeros_like(O)
     Mhat[donor_units, :] = Mnew
 
-    for i in range(O.shape[0]):
+    treat_rows = [i for i in range(O.shape[0]) if starting_time[i] < O.shape[1]]
+    for i in treat_rows:
         start = starting_time[i]
-        if start == O.shape[1]:
-            continue
         coef = np.linalg.pinv(Mnew[:, :start].T).dot(O[i, :start].T)
         Mhat[i, :] = Mnew.T.dot(coef)
 
@@ -122,10 +121,12 @@ def robust_synthetic_control(O, Z, suggest_r=-1):
         Mhat = np.zeros_like(O)
         Mhat[donor_units, :] = Mnew
 
-        Mminus = Mnew[:, :start]
-        for i in treat_units:
-            coef = np.linalg.pinv(Mminus.T).dot(O[i, :start].T)
-            Mhat[i, :] = Mnew.T.dot(coef)
+        # Precompute pinv once — Mminus is the same for all treated units.
+        Mminus = Mnew[:, :start]                    # (n_donor, T0)
+        Mminus_pinv = np.linalg.pinv(Mminus.T)      # (n_donor, T0)
+        treated_pre = O[treat_units, :start]         # (n_treated, T0)
+        coefs = treated_pre.dot(Mminus_pinv.T)       # (n_treated, n_donor)
+        Mhat[treat_units, :] = coefs.dot(Mnew)       # (n_treated, T)
 
         mse = np.sum((Mhat - O)[treat_units, start:end] ** 2)
         return mse, Mhat
