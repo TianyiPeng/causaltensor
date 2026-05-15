@@ -219,8 +219,14 @@ class SDIDPanelSolver(PanelSolver):
         Returns
         -------
         SDIDResult
-            ``.tau``      -- ATT scalar.
-            ``.baseline`` / ``.M`` -- weighted fixed-effects surface (N x T).
+            ``.tau``          — ATT scalar.
+            ``.baseline`` / ``.M`` — weighted fixed-effects surface (N × T).
+            ``.unit_weights`` — donor + treated unit weights ``w_sdid`` (N,).
+              Nonzero values identify the synthetic-control donor pool.
+              Access: ``result.unit_weights``.
+            ``.time_weights`` — pre + post-period time weights ``l_sdid`` (T,).
+              Nonzero values concentrate near the treatment onset.
+              Access: ``result.time_weights``.
 
         Raises
         ------

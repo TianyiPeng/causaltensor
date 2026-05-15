@@ -154,6 +154,12 @@ class MCNNMPanelSolver(PanelSolver):
         Returns
         -------
         MCNNMResult
+            ``.tau``                  — ATT scalar (or array for K treatments).
+            ``.baseline``             — full counterfactual panel ``M + FE`` (N × T).
+            ``.M``                    — low-rank component only (N × T).
+            ``.row_fixed_effects``    — unit fixed effects (N,).
+            ``.column_fixed_effects`` — time fixed effects (T,).
+            ``.beta``                 — covariate coefficients (K,) or None.
         """
         if self.O is None:
             raise ValueError("O must be provided at construction time: MCNNMPanelSolver(O, Z)")

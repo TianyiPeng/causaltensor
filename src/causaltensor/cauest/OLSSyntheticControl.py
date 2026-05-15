@@ -244,11 +244,17 @@ class OLSSCPanelSolver(PanelSolver):
         Returns
         -------
         OLSSCResult
-            Result object.  Key attributes: ``tau`` (average ATT float),
-            ``baseline`` (counterfactual panel N x T), ``individual_te``
-            (per-unit ``[unit_idx, tau_hat]`` list, extended to
-            ``[unit_idx, tau_hat, p_value]`` when ``pval=True``),
-            ``beta`` (list of simplex weight vectors).
+            ``.tau``             — average ATT across treated units (float).
+            ``.baseline`` / ``.M`` — counterfactual panel (N × T).
+            ``.beta``            — list of simplex donor-weight vectors, one per
+              treated unit (each of length ``n_control``).
+              Access: ``result.beta[i]`` for the i-th treated unit.
+            ``.individual_te``   — list of ``[unit_idx, tau_hat]`` (extended to
+              ``[unit_idx, tau_hat, p_value]`` when ``pval=True``).
+            ``.control_units``   — row indices of donor units (list[int]).
+            ``.treatment_units`` — row indices of treated units (list[int]).
+            ``.V``               — predictor importance weights (list) when
+              covariates are passed; empty list otherwise.
         """
         T = len(self.Y1)
         V = []
