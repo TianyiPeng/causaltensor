@@ -3,7 +3,7 @@ from causaltensor.utils.linalg import transform_to_3D
 import causaltensor.utils.linalg as util
 from causaltensor.cauest.panel_solver import FixedEffectPanelSolver
 from causaltensor.cauest.panel_solver import PanelSolver
-from causaltensor.cauest.result import Result
+from causaltensor.cauest.result import Result, _fmt_coefs, _fmt_fe
 
 
 def soft_impute(O, Omega, l, eps=1e-7, M_init=None, max_iter=2000):
@@ -41,12 +41,25 @@ def soft_impute(O, Omega, l, eps=1e-7, M_init=None, max_iter=2000):
     return M_new
 
 class MCNNMResult(Result):
-    def __init__(self, baseline = None, M = None, tau=None, beta=None, row_fixed_effects=None, column_fixed_effects=None, return_tau_scalar=False):
-        super().__init__(baseline = baseline, tau = tau, return_tau_scalar = return_tau_scalar)
+    def __init__(self, baseline=None, M=None, tau=None, beta=None, row_fixed_effects=None,
+                 column_fixed_effects=None, return_tau_scalar=False):
+        super().__init__(baseline=baseline, tau=tau, return_tau_scalar=return_tau_scalar)
         self.beta = beta
         self.row_fixed_effects = row_fixed_effects
         self.column_fixed_effects = column_fixed_effects
-        self.M = M # the low-rank component of the baseline model
+        self.M = M  # low-rank component of the baseline model
+
+    def _summary_internals(self):
+        lines = []
+        if self.M is not None:
+            lines.append(f"{'rank(M)':<24s}: {int(np.linalg.matrix_rank(self.M))}")
+        if self.beta is not None:
+            lines.append(_fmt_coefs(self.beta, "covariate_coefs"))
+        if self.row_fixed_effects is not None:
+            lines.append(_fmt_fe(self.row_fixed_effects, "row_FE (unit)"))
+        if self.column_fixed_effects is not None:
+            lines.append(_fmt_fe(self.column_fixed_effects, "col_FE (time)"))
+        return lines
 
 class MCNNMPanelSolver(PanelSolver):
     """
@@ -107,7 +120,8 @@ class MCNNMPanelSolver(PanelSolver):
             Omega = np.ones_like(Z[:, :], dtype=bool)
         Omega = Omega.astype(bool)
         if np.sum(Z==1) + np.sum(Z == 0) != Z.shape[0]*Z.shape[1]:
-            raise ValueError('Z should only consist of 0/1 in matrix completion solver') 
+            raise ValueError('Z should only consist of 0/1 in matrix completion solver')
+        self._Z_raw = np.asarray(Z, dtype=float)
         Z = Z.astype(bool)
         self.raw_Omega = Omega
         self.Z = (Z & Omega) # we only care the treatment matrix for observed entries 
@@ -144,11 +158,15 @@ class MCNNMPanelSolver(PanelSolver):
         if self.O is None:
             raise ValueError("O must be provided at construction time: MCNNMPanelSolver(O, Z)")
         if cross_validation:
-            return self.solve_with_cross_validation(self.O, K=K, list_l=list_l)
+            res = self.solve_with_cross_validation(self.O, K=K, list_l=list_l)
         else:
             if list_l is not None and len(list_l) > 0:
-                return self.solve_with_regularizer(self.O, l=list_l[0])
-            raise ValueError("Provide list_l when cross_validation=False")
+                res = self.solve_with_regularizer(self.O, l=list_l[0])
+            else:
+                raise ValueError("Provide list_l when cross_validation=False")
+        res.O = self.O
+        res.Z = self._Z_raw
+        return res
 
     def solve_with_regularizer(self, O=None, l=None, M_init=None, eps=1e-7, max_iter=2000):
         """Solve the matrix completion problem with a fixed nuclear-norm regulariser.

@@ -5,10 +5,18 @@ from causaltensor.cauest.result import Result
 from causaltensor.cauest.panel_solver import PanelSolver
 
 class DCResult(Result):
-    def __init__(self, baseline = None, tau=None, std=None, return_tau_scalar=False):
-        super().__init__(baseline = baseline, tau = tau, return_tau_scalar = return_tau_scalar)
+    def __init__(self, baseline=None, tau=None, std=None, return_tau_scalar=False):
+        super().__init__(baseline=baseline, tau=tau, return_tau_scalar=return_tau_scalar,
+                         std_tau=std,
+                         inference_method="sandwich SE" if std is not None else None)
         self.std = std
-        self.M = baseline # for backward compatability
+        self.M = baseline  # for backward compatibility
+
+    def _summary_internals(self):
+        lines = []
+        if self.M is not None:
+            lines.append(f"{'rank(M)':<24s}: {int(np.linalg.matrix_rank(self.M))}")
+        return lines
 
 class DCPanelSolver(PanelSolver):
     """
@@ -48,7 +56,8 @@ class DCPanelSolver(PanelSolver):
     def __init__(self, O=None, Z=None, suggest_r=None):
         super().__init__(Z)
         self.O = O
-        self.Z = transform_to_3D(Z) ## Z is (n1 x n2 x num_treat) numpy array
+        self._Z_raw = np.asarray(Z, dtype=float)
+        self.Z = transform_to_3D(Z)  # Z is (n1 x n2 x num_treat) numpy array
         self.suggest_R = suggest_r
         self.small_index, self.X, self.Xinv = self.prepare_OLS()
 
@@ -98,6 +107,8 @@ class DCPanelSolver(PanelSolver):
             raise ValueError("Either suggest_r or auto_rank must be provided")
 
         res = DCResult(baseline=M, tau=tau, std=std)
+        res.O = self.O
+        res.Z = self._Z_raw
         return res
 
     def solve_tau(self, O):

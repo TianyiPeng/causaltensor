@@ -58,12 +58,40 @@ class OLSSCResult(Result):
         return_tau_scalar=False,
         individual_te=None,
         V=None,
+        control_units=None,
+        treatment_units=None,
     ):
         super().__init__(baseline=baseline, tau=tau, return_tau_scalar=return_tau_scalar)
-        self.beta = beta  # control unit weights (per treated unit) or list thereof
-        self.M = baseline  # counterfactual panel
+        self.beta = beta          # list of weight arrays, one per treated unit (len = n_control each)
+        self.M = baseline         # counterfactual panel
         self.individual_te = individual_te
-        self.V = V  # predictor importance when covariates are used
+        self.V = V                # predictor importance weights when covariates are used
+        self.control_units = control_units    # original row indices of control units
+        self.treatment_units = treatment_units  # original row indices of treated units
+
+    def _summary_internals(self):
+        lines = []
+        if not self.beta:
+            return lines
+        has_pval = self.individual_te and len(self.individual_te[0]) >= 3
+        tu_list = self.treatment_units if self.treatment_units is not None else list(range(len(self.beta)))
+        lines.append(f"{'n_treated_units':<24s}: {len(self.beta)}")
+        if self.control_units is not None:
+            lines.append(f"{'n_donor_units':<24s}: {len(self.control_units)}")
+        lines.append(f"{'  (weights per unit)':<24s}: result.beta  (list of arrays)")
+        lines.append(f"{'  (unit indices)':<24s}: result.treatment_units, result.control_units")
+        if self.individual_te:
+            lines.append("")
+            lines.append("per-unit ATT:")
+            for k, (tu, W) in enumerate(zip(tu_list, self.beta)):
+                te_row = next((r for r in self.individual_te if r[0] == tu), None)
+                if te_row is None:
+                    continue
+                pv_str = f"  p={te_row[2]:.4g}" if has_pval else ""
+                W = np.asarray(W)
+                nz_support = int(np.sum(W > 1e-6))
+                lines.append(f"  unit {tu:<6d}: tau={te_row[1]:.4g}{pv_str}  ({nz_support} donors)")
+        return lines
 
 
 class OLSSCPanelSolver(PanelSolver):
@@ -89,6 +117,8 @@ class OLSSCPanelSolver(PanelSolver):
             raise ValueError(
                 "pval=True is only supported when X is None (no covariates)."
             )
+        self._O_raw = np.asarray(Y, dtype=float)   # (N, T) original outcome panel
+        self._Z_raw = np.asarray(Z, dtype=float)   # (N, T) original treatment mask
         # All internal logic uses (T, N) convention; transpose (N, T) inputs once here.
         self.Y = np.asarray(Y, dtype=float).T
         self.X = np.asarray(X, dtype=float).T if X is not None else None
@@ -247,13 +277,18 @@ class OLSSCPanelSolver(PanelSolver):
         if self.pval:
             self.individual_te = self.permutation_test()
 
-        return OLSSCResult(
+        res = OLSSCResult(
             baseline=M.T,  # return (N, T) to match all other solvers
             tau=tau,
             individual_te=self.individual_te,
             beta=weights,
             V=V,
+            control_units=list(self.control_units),
+            treatment_units=list(self.treatment_units),
         )
+        res.O = self._O_raw
+        res.Z = self._Z_raw
+        return res
 
     def permutation_test(self):
         """

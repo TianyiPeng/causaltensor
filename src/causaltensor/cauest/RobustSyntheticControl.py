@@ -171,6 +171,13 @@ class RSCResult(Result):
         super().__init__(baseline=baseline, tau=tau)
         self.M = baseline  # fitted counterfactual panel
 
+    def _summary_internals(self):
+        import numpy as _np
+        lines = []
+        if self.M is not None:
+            lines.append(f"{'rank(M)':<24s}: {int(_np.linalg.matrix_rank(self.M))}")
+        return lines
+
 
 class RSCPanelSolver(PanelSolver):
     """
@@ -213,4 +220,7 @@ class RSCPanelSolver(PanelSolver):
             ``.baseline`` / ``.M`` — fitted counterfactual panel (ndarray)
         """
         Mhat, tau = robust_synthetic_control(self.O, self.Z, suggest_r=self.suggest_r)
-        return RSCResult(baseline=Mhat, tau=tau)
+        res = RSCResult(baseline=Mhat, tau=tau)
+        res.O = self.O
+        res.Z = self.Z
+        return res

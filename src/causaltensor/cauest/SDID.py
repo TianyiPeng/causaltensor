@@ -13,12 +13,31 @@ from causaltensor.cauest.result import Result
         "Synthetic Difference-in-Differences." American Economic Review, 111 (12): 4088-4118
 '''
 class SDIDResult(Result):
-    def __init__(self, baseline = None, tau=None, beta=None, row_fixed_effects=None, column_fixed_effects=None, return_tau_scalar=False):
-        super().__init__(baseline = baseline, tau = tau, return_tau_scalar = return_tau_scalar)
+    def __init__(self, baseline=None, tau=None, beta=None, row_fixed_effects=None,
+                 column_fixed_effects=None, return_tau_scalar=False,
+                 unit_weights=None, time_weights=None):
+        super().__init__(baseline=baseline, tau=tau, return_tau_scalar=return_tau_scalar)
         self.beta = beta
         self.row_fixed_effects = row_fixed_effects
         self.column_fixed_effects = column_fixed_effects
-        self.M = baseline 
+        self.M = baseline
+        self.unit_weights = unit_weights  # w_sdid (N,): donor + treated unit weights
+        self.time_weights = time_weights  # l_sdid (T,): pre + post-period time weights
+
+    def _summary_internals(self):
+        lines = []
+        if self.unit_weights is not None:
+            w = np.asarray(self.unit_weights)
+            nz = int(np.sum(w > 1e-6))
+            top_i = int(np.argmax(w))
+            lines.append(f"{'unit_weights':<24s}: {nz} nonzero  (top: unit {top_i}, w={w[top_i]:.4g})")
+            lines.append(f"{'  (full array)':<24s}: result.unit_weights")
+        if self.time_weights is not None:
+            l = np.asarray(self.time_weights)
+            nz = int(np.sum(l > 1e-6))
+            lines.append(f"{'time_weights':<24s}: {nz} nonzero")
+            lines.append(f"{'  (full array)':<24s}: result.time_weights")
+        return lines
 
 
 
@@ -143,7 +162,7 @@ class SDIDPanelSolver(PanelSolver):
         prob.solve(solver=cp.CLARABEL)
 
         if w.value is None:
-            return None, None, False
+            return None, None, False, None, None
 
         w_sdid = np.zeros(X.shape[0])
         w_sdid[self.donor_units] = w.value
@@ -160,7 +179,7 @@ class SDIDPanelSolver(PanelSolver):
         prob.solve(solver=cp.CLARABEL)
 
         if l.value is None:
-            return None, None, False
+            return None, None, False, None, None
 
         l_sdid = np.zeros(X.shape[1])
         l_sdid[:Tpre] = l.value
@@ -191,7 +210,7 @@ class SDIDPanelSolver(PanelSolver):
             M = a.dot(one_row) + one_col.dot(b.T)
             tau = np.sum(self.Z * (X - M) * weights) / np.sum(self.Z * weights)
 
-        return tau, M, True
+        return tau, M, True, w_sdid, l_sdid
 
     def fit(self):
         """
@@ -217,15 +236,16 @@ class SDIDPanelSolver(PanelSolver):
             if (i not in self.treat_units):
                 self.donor_units.append(i)
 
-        tau, M, feasible = self._solve_all_steps(self.X)
+        tau, M, feasible, w_sdid, l_sdid = self._solve_all_steps(self.X)
 
         if not feasible:
             # Rescale to unit std to improve CVXPY numerical conditioning,
             # then unscale tau and M back to the original units.
+            # Weights are scale-invariant, so they need no adjustment.
             scale = float(np.nanstd(self.X))
             if not (np.isfinite(scale) and scale > 0):
                 scale = 1.0
-            tau_scaled, M_scaled, feasible_retry = self._solve_all_steps(self.X / scale)
+            tau_scaled, M_scaled, feasible_retry, w_sdid, l_sdid = self._solve_all_steps(self.X / scale)
             if feasible_retry:
                 tau = tau_scaled * scale
                 M = M_scaled * scale
@@ -236,7 +256,9 @@ class SDIDPanelSolver(PanelSolver):
                     "Check treatment timing, panel scales, and pre/post support."
                 )
 
-        res = SDIDResult(baseline=M, tau=tau)
+        res = SDIDResult(baseline=M, tau=tau, unit_weights=w_sdid, time_weights=l_sdid)
+        res.O = self.X  # self.X stores the observed outcome panel
+        res.Z = self.Z  # 2D treatment mask
         return res
     
 # backward compatibility
