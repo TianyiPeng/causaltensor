@@ -3,6 +3,49 @@
 Changelog
 =========
 
+0.1.14 (2026-05-15)
+------------------
+
+New features
+~~~~~~~~~~~~
+
+- **Rich result objects.** Every ``solver.fit()`` call now returns a fully self-contained result object.
+
+  - ``result.O`` and ``result.Z`` are attached automatically, enabling all diagnostics without re-running the model.
+  - New computed properties: ``residuals``, ``effect_matrix``, ``z_pattern``, ``untreated_r2``, ``control_rmse``, ``pre_exposure_rmse``, ``rmspe_ratio``.
+  - **``result.summary()``** prints a formatted table covering panel info, ATT estimate (with SE when available), fit diagnostics, and estimator-specific model internals (weights, rank, fixed effects, factor matrix shape). Returns ``self`` for method chaining.
+  - **``result.plot_actual_vs_counterfactual(unit)``** renders an interactive Plotly chart — actual vs. counterfactual with green treatment-period shading, T0 marker, and a unit-level annotation box.
+
+- **Estimator-specific result attributes** (all new, accessed directly on the returned object):
+
+  - DID / SDID / MC-NNM: ``row_fixed_effects``, ``column_fixed_effects``
+  - SDID: ``unit_weights`` (donor simplex weights), ``time_weights``
+  - MC-NNM: ``M`` (low-rank component separate from fixed effects), ``beta``
+  - DC-PR: ``std`` / ``std_tau`` (sandwich SE), ``inference_method``
+  - OLS SC: ``beta`` (per-unit donor weight vectors), ``individual_te``, ``control_units``, ``treatment_units``
+  - CovPCA: ``U`` (left factor matrix, N × r)
+
+- **Large recommendation / retail panels enabled.** ``load_dataset`` now accepts two keyword arguments forwarded to the four large-panel loaders (``retailrocket``, ``dunnhumby``, ``truus``, ``movielens``):
+
+  - ``n_units`` (default 2500) — retain only the top-N items by event count.
+  - ``time_freq`` (``'W'`` / ``'M'`` / ``'D'``, default weekly) — aggregate raw daily data before pivoting, controlling panel width.
+
+- **Tutorial Guide 04** (``tutorials/guides/04_inspecting_results.ipynb``) — end-to-end walkthrough of the result object API using synthetic data with a known ground-truth ATT.
+
+Performance improvements
+~~~~~~~~~~~~~~~~~~~~~~~~
+
+- **SDID**: Replaced ``np.eye(N) @ w >= 0`` / ``np.ones(N).T @ w == 1`` constraint matrices with native CVXPY ``w >= 0`` / ``cp.sum(w) == 1`` forms; solver pinned to ``CLARABEL`` for faster, more reliable convergence.
+- **OLS SC**: Inner donor-weight optimisation replaced with a ``CLARABEL``-based QP (``cvxpy``), dropping the ``sklearn`` dependency. The outer predictor-importance loop retains ``fmin_slsqp`` as it operates in a low-dimensional covariate space.
+- **RSC**: Per-treated-unit projection vectorised — pseudoinverse of the pre-period donor matrix is computed once and applied to all treated rows in a single matrix multiply instead of a Python loop.
+
+Documentation
+~~~~~~~~~~~~~
+
+- ``docs/api.rst`` extended with a "Result Objects" section: common-attribute table and per-estimator attribute reference with quick-access code examples.
+- ``fit()`` docstrings for SDID, MC-NNM, and OLS SC updated with complete ``Returns`` sections.
+- Cross-reference from Guide 01 to Guide 04 added.
+
 0.1.13 (2026-05-12)
 ------------------
 

@@ -6,11 +6,38 @@ simplex constraints; optional covariates enter a nested predictor-reweighting st
 """
 
 import numpy as np
+import cvxpy as cp
 from scipy.optimize import fmin_slsqp
-from sklearn.metrics import mean_squared_error
 
 from causaltensor.cauest.panel_solver import PanelSolver
 from causaltensor.cauest.result import Result
+
+
+def _solve_simplex_qp(y_c: np.ndarray, y_t: np.ndarray) -> np.ndarray:
+    """Solve ``min ||y_t - y_c @ W||²  s.t. W >= 0, sum(W) = 1``."""
+    W_var = cp.Variable(y_c.shape[1])
+    prob = cp.Problem(
+        cp.Minimize(cp.sum_squares(y_t - y_c @ W_var)),
+        [W_var >= 0, cp.sum(W_var) == 1],
+    )
+    prob.solve(solver=cp.CLARABEL)
+    return np.clip(np.asarray(W_var.value, dtype=float), 0.0, None)
+
+
+def _solve_simplex_qp_weighted(X0: np.ndarray, X1: np.ndarray,
+                                V: np.ndarray) -> np.ndarray:
+    """Solve ``min sum_k V_k*(X1_k - X0_k @ W)²  s.t. W >= 0, sum(W) = 1``.
+
+    ``X0`` is (K, n_control), ``X1`` is (K,), ``V`` is (K,) predictor weights.
+    """
+    sqrtV = np.sqrt(np.maximum(V, 0.0))
+    W_var = cp.Variable(X0.shape[1])
+    prob = cp.Problem(
+        cp.Minimize(cp.sum_squares(cp.multiply(sqrtV, X1 - X0 @ W_var))),
+        [W_var >= 0, cp.sum(W_var) == 1],
+    )
+    prob.solve(solver=cp.CLARABEL)
+    return np.clip(np.asarray(W_var.value, dtype=float), 0.0, None)
 
 
 def _slsqp_minimizer(out):
@@ -31,12 +58,40 @@ class OLSSCResult(Result):
         return_tau_scalar=False,
         individual_te=None,
         V=None,
+        control_units=None,
+        treatment_units=None,
     ):
         super().__init__(baseline=baseline, tau=tau, return_tau_scalar=return_tau_scalar)
-        self.beta = beta  # control unit weights (per treated unit) or list thereof
-        self.M = baseline  # counterfactual panel
+        self.beta = beta          # list of weight arrays, one per treated unit (len = n_control each)
+        self.M = baseline         # counterfactual panel
         self.individual_te = individual_te
-        self.V = V  # predictor importance when covariates are used
+        self.V = V                # predictor importance weights when covariates are used
+        self.control_units = control_units    # original row indices of control units
+        self.treatment_units = treatment_units  # original row indices of treated units
+
+    def _summary_internals(self):
+        lines = []
+        if not self.beta:
+            return lines
+        has_pval = self.individual_te and len(self.individual_te[0]) >= 3
+        tu_list = self.treatment_units if self.treatment_units is not None else list(range(len(self.beta)))
+        lines.append(f"{'n_treated_units':<24s}: {len(self.beta)}")
+        if self.control_units is not None:
+            lines.append(f"{'n_donor_units':<24s}: {len(self.control_units)}")
+        lines.append(f"{'  (weights per unit)':<24s}: result.beta  (list of arrays)")
+        lines.append(f"{'  (unit indices)':<24s}: result.treatment_units, result.control_units")
+        if self.individual_te:
+            lines.append("")
+            lines.append("per-unit ATT:")
+            for k, (tu, W) in enumerate(zip(tu_list, self.beta)):
+                te_row = next((r for r in self.individual_te if r[0] == tu), None)
+                if te_row is None:
+                    continue
+                pv_str = f"  p={te_row[2]:.4g}" if has_pval else ""
+                W = np.asarray(W)
+                nz_support = int(np.sum(W > 1e-6))
+                lines.append(f"  unit {tu:<6d}: tau={te_row[1]:.4g}{pv_str}  ({nz_support} donors)")
+        return lines
 
 
 class OLSSCPanelSolver(PanelSolver):
@@ -62,6 +117,8 @@ class OLSSCPanelSolver(PanelSolver):
             raise ValueError(
                 "pval=True is only supported when X is None (no covariates)."
             )
+        self._O_raw = np.asarray(Y, dtype=float)   # (N, T) original outcome panel
+        self._Z_raw = np.asarray(Z, dtype=float)   # (N, T) original treatment mask
         # All internal logic uses (T, N) convention; transpose (N, T) inputs once here.
         self.Y = np.asarray(Y, dtype=float).T
         self.X = np.asarray(X, dtype=float).T if X is not None else None
@@ -141,69 +198,40 @@ class OLSSCPanelSolver(PanelSolver):
         V : ndarray or None
             Predictor weights if covariates are used; otherwise None.
         """
-        def loss_v(W, y_c, y_t):
-            return np.mean((y_t - y_c.dot(W)) ** 2)
-
-        def w_eq_simplex(W, y_c, y_t):
-            del y_c, y_t
-            return np.sum(W) - 1.0
-
         y_c = Y0[: self.T0]
         y_t = Y1[: self.T0]
-        w_start = np.array([1.0 / y_c.shape[1]] * y_c.shape[1])
 
         if X1 is not None:
-            v_start = np.array([1.0 / X0.shape[0]] * X0.shape[0])
+            # Covariate path: alternate between optimising W (donor weights) and
+            # V (predictor importance weights).  V lives in a low-dimensional
+            # space (K covariates), so the outer loop over V stays with SLSQP;
+            # only the inner high-dimensional W optimisation is replaced.
+            v_start = np.full(X0.shape[0], 1.0 / X0.shape[0])
 
-            def v_eq_simplex(V, W, X0, X1, y_c, y_t):
-                del W, X0, X1, y_c, y_t
+            def optimize_W(V):
+                return _solve_simplex_qp_weighted(X0, X1, V)
+
+            def loss_v_at_V(V_raw):
+                W_at_v = optimize_W(np.clip(V_raw, 0.0, None))
+                r = y_t - y_c.dot(W_at_v)
+                return float(r.dot(r)) / len(y_t)
+
+            def v_eq_simplex(V):
                 return np.sum(V) - 1.0
 
-            def w_eq_with_V(W, V, X0, X1):
-                del V, X0, X1
-                return np.sum(W) - 1.0
-
-            def loss_w(W, V, X0, X1):
-                return mean_squared_error(X1, X0.dot(W), sample_weight=V)
-
-            def optimize_W(W, V, X0, X1):
-                out = fmin_slsqp(
-                    loss_w,
-                    W,
-                    bounds=[(0.0, 1.0)] * len(W),
-                    f_eqcons=w_eq_with_V,
-                    args=(V, X0, X1),
-                    disp=False,
-                    full_output=True,
-                )
-                return _slsqp_minimizer(out)
-
-            def optimize_V(V, W, X0, X1, y_c, y_t):
-                w_at_v = optimize_W(W, V, X0, X1)
-                return loss_v(w_at_v, y_c, y_t)
-
             V_out = fmin_slsqp(
-                optimize_V,
+                loss_v_at_V,
                 v_start,
-                args=(w_start, X0, X1, y_c, y_t),
                 bounds=[(0.0, 1.0)] * len(v_start),
-                disp=False,
                 f_eqcons=v_eq_simplex,
                 acc=1e-6,
-            )
-            V = _slsqp_minimizer(V_out)
-            W = optimize_W(w_start, V, X0, X1)
-        else:
-            V = None
-            W_out = fmin_slsqp(
-                loss_v,
-                w_start,
-                args=(y_c, y_t),
-                f_eqcons=w_eq_simplex,
-                bounds=[(0.0, 1.0)] * len(w_start),
                 disp=False,
             )
-            W = _slsqp_minimizer(W_out)
+            V = _slsqp_minimizer(V_out)
+            W = optimize_W(V)
+        else:
+            V = None
+            W = _solve_simplex_qp(y_c, y_t)
 
         M = Y0 @ W
         tau = np.mean((Y1 - M)[self.T0 :])
@@ -216,11 +244,17 @@ class OLSSCPanelSolver(PanelSolver):
         Returns
         -------
         OLSSCResult
-            Result object.  Key attributes: ``tau`` (average ATT float),
-            ``baseline`` (counterfactual panel N x T), ``individual_te``
-            (per-unit ``[unit_idx, tau_hat]`` list, extended to
-            ``[unit_idx, tau_hat, p_value]`` when ``pval=True``),
-            ``beta`` (list of simplex weight vectors).
+            ``.tau``             — average ATT across treated units (float).
+            ``.baseline`` / ``.M`` — counterfactual panel (N × T).
+            ``.beta``            — list of simplex donor-weight vectors, one per
+              treated unit (each of length ``n_control``).
+              Access: ``result.beta[i]`` for the i-th treated unit.
+            ``.individual_te``   — list of ``[unit_idx, tau_hat]`` (extended to
+              ``[unit_idx, tau_hat, p_value]`` when ``pval=True``).
+            ``.control_units``   — row indices of donor units (list[int]).
+            ``.treatment_units`` — row indices of treated units (list[int]).
+            ``.V``               — predictor importance weights (list) when
+              covariates are passed; empty list otherwise.
         """
         T = len(self.Y1)
         V = []
@@ -249,13 +283,18 @@ class OLSSCPanelSolver(PanelSolver):
         if self.pval:
             self.individual_te = self.permutation_test()
 
-        return OLSSCResult(
+        res = OLSSCResult(
             baseline=M.T,  # return (N, T) to match all other solvers
             tau=tau,
             individual_te=self.individual_te,
             beta=weights,
             V=V,
+            control_units=list(self.control_units),
+            treatment_units=list(self.treatment_units),
         )
+        res.O = self._O_raw
+        res.Z = self._Z_raw
+        return res
 
     def permutation_test(self):
         """

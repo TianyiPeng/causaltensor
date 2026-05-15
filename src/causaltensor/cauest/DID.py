@@ -1,15 +1,26 @@
 import numpy as np
-from causaltensor.cauest.result import Result
+from causaltensor.cauest.result import Result, _fmt_coefs, _fmt_fe
 from causaltensor.cauest.panel_solver import PanelSolver
 from causaltensor.cauest.panel_solver import FixedEffectPanelSolver
 
 class DIDResult(Result):
-    def __init__(self, baseline = None, tau=None, beta=None, row_fixed_effects=None, column_fixed_effects=None, return_tau_scalar=False):
-        super().__init__(baseline = baseline, tau = tau, return_tau_scalar = return_tau_scalar)
+    def __init__(self, baseline=None, tau=None, beta=None, row_fixed_effects=None,
+                 column_fixed_effects=None, return_tau_scalar=False):
+        super().__init__(baseline=baseline, tau=tau, return_tau_scalar=return_tau_scalar)
         self.beta = beta
         self.row_fixed_effects = row_fixed_effects
         self.column_fixed_effects = column_fixed_effects
-        self.M = baseline # for backward compatability
+        self.M = baseline  # for backward compatibility
+
+    def _summary_internals(self):
+        lines = []
+        if self.beta is not None:
+            lines.append(_fmt_coefs(self.beta, "covariate_coefs"))
+        if self.row_fixed_effects is not None:
+            lines.append(_fmt_fe(self.row_fixed_effects, "row_FE (unit)"))
+        if self.column_fixed_effects is not None:
+            lines.append(_fmt_fe(self.column_fixed_effects, "col_FE (time)"))
+        return lines
 
         
 class DIDPanelSolver(PanelSolver):
@@ -46,6 +57,7 @@ class DIDPanelSolver(PanelSolver):
     """
 
     def __init__(self, O=None, Z=None, X=None, Omega=None, fixed_effects='two-way', **kwargs):
+        self._Z_raw = np.asarray(Z, dtype=float) if Z is not None else None
         super().__init__(Z)
         self.O = O
         self.X = X
@@ -85,10 +97,12 @@ class DIDPanelSolver(PanelSolver):
         k = self.Z.shape[0]
         tau = res_fe.beta[:k]
         beta = res_fe.beta[k:] if self.X is not None else None
-        res = DIDResult(baseline = res_fe.fitted_value, tau = tau, beta = beta, 
-                        row_fixed_effects = res_fe.row_fixed_effects, 
-                        column_fixed_effects = res_fe.column_fixed_effects,
-                        return_tau_scalar = self.return_tau_scalar)
+        res = DIDResult(baseline=res_fe.fitted_value, tau=tau, beta=beta,
+                        row_fixed_effects=res_fe.row_fixed_effects,
+                        column_fixed_effects=res_fe.column_fixed_effects,
+                        return_tau_scalar=self.return_tau_scalar)
+        res.O = O
+        res.Z = self._Z_raw
         return res
 #deprecated
 #for backward compatability  

@@ -198,6 +198,13 @@ class CovariancePCAResult(Result):
         self.M = baseline  # low-rank reconstruction
         self.U = U         # left factor matrix (N × r)
 
+    def _summary_internals(self):
+        lines = []
+        if self.U is not None:
+            lines.append(f"{'num_factors':<24s}: {self.U.shape[1]}")
+            lines.append(f"{'factor_matrix (U) shape':<24s}: {self.U.shape}  (units x factors)")
+        return lines
+
 
 class CovariancePCAPanelSolver(PanelSolver):
     """
@@ -260,4 +267,7 @@ class CovariancePCAPanelSolver(PanelSolver):
             return_U=True,
             seed=self.seed,
         )
-        return CovariancePCAResult(baseline=M, tau=tau, U=U)
+        res = CovariancePCAResult(baseline=M, tau=tau, U=U)
+        res.O = self.O
+        res.Z = self.Z
+        return res

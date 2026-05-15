@@ -5,11 +5,14 @@ This module provides a unified interface for loading various datasets used in ca
 Each dataset returns Y_df (outcome matrix), and optionally Z_df (treatment matrix) and X_df (covariates matrix).
 """
 
+import os
 import pandas as pd
 import numpy as np
 import logging
 from typing import Optional, Dict, Any, Tuple, Callable
 logger = logging.getLogger(__name__)
+
+_RAW_DATA_DIR = os.path.join(os.path.dirname(__file__), "raw") + os.sep
 
 
 try:
@@ -152,13 +155,29 @@ def create_x_dataframe(df: pd.DataFrame, Y_df: pd.DataFrame, index_col: str, tim
     return X_df
 
 
-def load_dataset(dataset_name: str, datasets_path: str = "src/causaltensor/datasets/raw/") -> Tuple[pd.DataFrame, Optional[pd.DataFrame], Optional[pd.DataFrame]]:
+def load_dataset(
+    dataset_name: str,
+    datasets_path: str = "src/causaltensor/datasets/raw/",
+    **kwargs: Any,
+) -> Tuple[pd.DataFrame, Optional[pd.DataFrame], Optional[pd.DataFrame]]:
     """
     Load a dataset by name and return Y_df, Z_df (optional), and X_df (optional).
     
     Args:
         dataset_name: Name of the dataset to load
         datasets_path: Path to the datasets directory
+        **kwargs: Extra keyword arguments forwarded to the dataset loader.
+            The large recommendation datasets (retailrocket, dunnhumby, truus,
+            movielens) accept:
+
+            n_units (int, default 2500):
+                Retain only the top *n_units* items/products/movies by total
+                event or observation count before building the panel. Pass
+                ``None`` to keep all units.
+            time_freq (str, default 'W'):
+                Temporal aggregation granularity applied before pivoting.
+                ``'W'`` = weekly (day // 7), ``'M'`` = monthly (day // 30),
+                ``'D'`` = daily (no aggregation).
     
     Returns:
         Tuple of (Y_df, Z_df, X_df) where Z_df and X_df may be None
@@ -182,7 +201,7 @@ def load_dataset(dataset_name: str, datasets_path: str = "src/causaltensor/datas
     except KeyError as exc:
         available = ", ".join(DATASET_BUILDERS.keys())
         raise ValueError(f"Unknown dataset '{dataset_name}'. Available datasets: {available}") from exc
-    return loader(datasets_path)
+    return loader(datasets_path, **kwargs)
 
 
 def _load_smoking_dataset(datasets_path: str) -> Tuple[pd.DataFrame, pd.DataFrame, pd.DataFrame]:
@@ -422,42 +441,153 @@ def _load_pwt_norway_oil_dataset(datasets_path: str) -> Tuple[pd.DataFrame, pd.D
     return Y_df, Z_df, X_df
 
 
-def _load_retailrocket_dataset(datasets_path: str) -> Tuple[pd.DataFrame, None, None]:
-    """Load Retailrocket recommendation dataset"""
+def _sample_top_units(df: pd.DataFrame, unit_col: str, n_units: Optional[int]) -> pd.DataFrame:
+    """Keep only the top *n_units* rows by event/observation count per unit.
+
+    Passing ``n_units=None`` (or a value larger than the number of unique units)
+    returns the dataframe unchanged.
+    """
+    if n_units is None:
+        return df
+    n_unique = df[unit_col].nunique()
+    if n_unique <= n_units:
+        return df
+    top_units = df[unit_col].value_counts().iloc[:n_units].index
+    filtered = df[df[unit_col].isin(top_units)]
+    print(f"  Sampled top {n_units} / {n_unique} units by event count.")
+    return filtered
+
+
+def _day_to_period(day_series: pd.Series, freq: str) -> pd.Series:
+    """Convert a numeric *day* index to a coarser integer period index.
+
+    Parameters
+    ----------
+    day_series:
+        Integer series of day offsets (0-based).
+    freq:
+        ``'W'`` / ``'week'`` for weekly periods (day // 7),
+        ``'M'`` / ``'month'`` for monthly periods (day // 30),
+        ``'D'`` / ``'day'`` to keep daily granularity.
+    """
+    freq_upper = freq.upper()
+    if freq_upper in ('W', 'WEEK'):
+        period = (day_series // 7).astype(int)
+        label = "week"
+    elif freq_upper in ('M', 'MONTH'):
+        period = (day_series // 30).astype(int)
+        label = "month"
+    elif freq_upper in ('D', 'DAY'):
+        period = day_series.astype(int)
+        label = "day"
+    else:
+        raise ValueError(f"Unknown time_freq '{freq}'. Use 'W' (weekly), 'M' (monthly), or 'D' (daily).")
+    n_before = day_series.nunique()
+    n_after = period.nunique()
+    print(f"  Aggregated {n_before} days into {n_after} {label} periods.")
+    return period
+
+
+def _load_retailrocket_dataset(
+    datasets_path: str,
+    n_units: Optional[int] = 2500,
+    time_freq: str = 'W',
+) -> Tuple[pd.DataFrame, None, None]:
+    """Load Retailrocket recommendation dataset.
+
+    Parameters
+    ----------
+    n_units:
+        Number of top items (by event count) to retain. ``None`` keeps all.
+    time_freq:
+        Time aggregation granularity: ``'W'`` (weekly), ``'M'`` (monthly), or
+        ``'D'`` (daily, original behaviour).
+    """
     df = pd.read_csv(f'{datasets_path}retailrocket_filtered.csv', engine="python", sep=None)
-    df = df.groupby(['itemid', 'day']).size().reset_index(name='count')
-    Y_df = create_y_dataframe(df, index_col="itemid", column_col="day", value_col="count").fillna(0)
-    
+    df = _sample_top_units(df, 'itemid', n_units)
+    df['period'] = _day_to_period(df['day'], time_freq)
+    df = df.groupby(['itemid', 'period']).size().reset_index(name='count')
+    Y_df = create_y_dataframe(df, index_col="itemid", column_col="period", value_col="count").fillna(0)
+
     return Y_df, None, None
 
 
-def _load_dunnhumby_dataset(datasets_path: str) -> Tuple[pd.DataFrame, pd.DataFrame, None]:
-    """Load Dunnhumby retail dataset"""
+def _load_dunnhumby_dataset(
+    datasets_path: str,
+    n_units: Optional[int] = 2500,
+    time_freq: str = 'W',
+) -> Tuple[pd.DataFrame, pd.DataFrame, None]:
+    """Load Dunnhumby retail dataset.
+
+    Parameters
+    ----------
+    n_units:
+        Number of top products (by observation count) to retain. ``None`` keeps all.
+    time_freq:
+        Time aggregation granularity: ``'W'`` (weekly), ``'M'`` (monthly), or
+        ``'D'`` (daily, original behaviour).
+    """
     df = pd.read_csv(f'{datasets_path}dunnhumby_filtered.csv', engine="python", sep=None)
-    Y_df = create_y_dataframe(df, index_col="PRODUCT_ID", column_col="DAY", value_col="SALES_VALUE").fillna(0)
-    Z_df = create_y_dataframe(df, index_col="PRODUCT_ID", column_col="DAY", value_col="PROMO").fillna(0)
-    
+    df = _sample_top_units(df, 'PRODUCT_ID', n_units)
+    df['period'] = _day_to_period(df['DAY'], time_freq)
+    agg = df.groupby(['PRODUCT_ID', 'period']).agg(
+        SALES_VALUE=('SALES_VALUE', 'sum'),
+        PROMO=('PROMO', 'max'),
+    ).reset_index()
+    Y_df = create_y_dataframe(agg, index_col="PRODUCT_ID", column_col="period", value_col="SALES_VALUE").fillna(0)
+    Z_df = create_y_dataframe(agg, index_col="PRODUCT_ID", column_col="period", value_col="PROMO").fillna(0)
+
     return Y_df, Z_df, None
 
 
-def _load_truus_dataset(datasets_path: str) -> Tuple[pd.DataFrame, None, None]:
-    """Load Truus recommendation dataset"""
+def _load_truus_dataset(
+    datasets_path: str,
+    n_units: Optional[int] = 2500,
+    time_freq: str = 'W',
+) -> Tuple[pd.DataFrame, None, None]:
+    """Load Truus recommendation dataset.
+
+    Parameters
+    ----------
+    n_units:
+        Number of top SKUs (by event count) to retain. ``None`` keeps all.
+    time_freq:
+        Time aggregation granularity: ``'W'`` (weekly), ``'M'`` (monthly), or
+        ``'D'`` (daily, original behaviour).
+    """
     df = pd.read_csv(f'{datasets_path}truus.csv', engine="python", sep=None)
-    df = df.groupby(['sku_id', 'day']).size().reset_index(name='count')
-    Y_df = create_y_dataframe(df, index_col="sku_id", column_col="day", value_col="count").fillna(0)
-    
+    df = _sample_top_units(df, 'sku_id', n_units)
+    df['period'] = _day_to_period(df['day'], time_freq)
+    df = df.groupby(['sku_id', 'period']).size().reset_index(name='count')
+    Y_df = create_y_dataframe(df, index_col="sku_id", column_col="period", value_col="count").fillna(0)
+
     return Y_df, None, None
 
 
-def _load_movielens_dataset(datasets_path: str) -> Tuple[pd.DataFrame, None, None]:
-    """Load MovieLens recommendation dataset"""
-    df = pd.read_csv(f'{datasets_path}movielens.data', sep='\t', header=None, 
+def _load_movielens_dataset(
+    datasets_path: str,
+    n_units: Optional[int] = 2500,
+    time_freq: str = 'W',
+) -> Tuple[pd.DataFrame, None, None]:
+    """Load MovieLens recommendation dataset.
+
+    Parameters
+    ----------
+    n_units:
+        Number of top movies (by rating count) to retain. ``None`` keeps all.
+    time_freq:
+        Time aggregation granularity: ``'W'`` (weekly), ``'M'`` (monthly), or
+        ``'D'`` (daily, original behaviour).
+    """
+    df = pd.read_csv(f'{datasets_path}movielens.data', sep='\t', header=None,
                      names=['user_id', 'movie_id', 'rating', 'timestamp'])
-    df['date'] = pd.to_datetime(df['timestamp'], unit='s').dt.date
-    df['day'] = pd.to_numeric(df['date'].astype('category').cat.codes)
-    df = df.groupby(['movie_id', 'day']).size().reset_index(name='count')
-    Y_df = create_y_dataframe(df, index_col="movie_id", column_col="day", value_col="count").fillna(0)
-    
+    df = _sample_top_units(df, 'movie_id', n_units)
+    timestamps = pd.to_datetime(df['timestamp'], unit='s')
+    df['day'] = (timestamps - timestamps.min()).dt.days
+    df['period'] = _day_to_period(df['day'], time_freq)
+    df = df.groupby(['movie_id', 'period']).size().reset_index(name='count')
+    Y_df = create_y_dataframe(df, index_col="movie_id", column_col="period", value_col="count").fillna(0)
+
     return Y_df, None, None
 
 
@@ -473,10 +603,10 @@ DATASET_BUILDERS: Dict[str, Callable[[str], Tuple[pd.DataFrame, Optional[pd.Data
     # Recommendation / promo panels (loaders below are kept for future use):
     # disabled until row/column sampling is implemented — full grids are too large
     # for default workflows. Names are intentionally omitted from this dict.
-    # "retailrocket": _load_retailrocket_dataset,
-    # "dunnhumby": _load_dunnhumby_dataset,
-    # "truus": _load_truus_dataset,
-    # "movielens": _load_movielens_dataset,
+    "retailrocket": _load_retailrocket_dataset,
+    "dunnhumby": _load_dunnhumby_dataset,
+    "truus": _load_truus_dataset,
+    "movielens": _load_movielens_dataset,
 }
 
 
