@@ -33,6 +33,7 @@ pyreadr = "^0.5.0"
 qdldl = ">=0.1.7.post5"
 plotly = "^5.0"
 kaleido = {version = "^0.2", optional = true}
+psutil = ">=6.0"
 
 [tool.poetry.extras]
 static-plots = ["kaleido"]
