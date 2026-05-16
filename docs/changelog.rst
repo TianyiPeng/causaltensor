@@ -18,8 +18,7 @@ Improvements & fixes
 ~~~~~~~~~~~~~~~~~~~~
 
 - **OLS synthetic control** and **robust synthetic control**: staggered adoption (unit-specific treatment starts; donor pre-periods and ATT aligned with assignment geometry).
-- **Result objects** — ``Result(..., return_tau_scalar=True)`` coerces scalar and array ``tau`` safely (fixes NumPy 0-d ``tau`` from robust SC).
-- **Utilities** — ``causaltensor.utils.common.get_fit_result_from_method`` centralizes panel fits used for reporting and diagnostics.
+- **Load tests** (`causaltensor.analysis.load_tests`) — Windows-oriented grid harness over synthetic ``(N, T)``: subprocess timing, ``rss_fit_peak_mb`` as incremental ΔRSS **during** ``get_tau_from_method_with_error`` (poll sampling), ATT relative error vs ``generate`` truth; optional ``--timeout`` (wall-clock kill) and ``--memory-mb`` enforced on **that same ΔRSS** definition (not summed child-tree RSS).
 
 Documentation & packaging
 ~~~~~~~~~~~~~~~~~~~~~~~~~
