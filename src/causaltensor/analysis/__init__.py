@@ -7,8 +7,8 @@ Modules that run experiments and generate reports:
                         treatment into real or generated panels, compare estimators)
 - real_dataset_report : run each estimator on one real dataset (observed ``Z``)
                         and tabulate the results
-- aa_tests            : A/A power analysis (zero-treatment verification) on one
-                        dataset
+- power_analysis        : A/A null + empirical power + PNGs + CSVs under
+                          ``results/power_analysis/<dataset>/``
 - load_tests          : load tests — wall-clock time and peak memory across
                         N×T grids for all estimators
 
