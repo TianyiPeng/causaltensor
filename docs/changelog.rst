@@ -3,6 +3,30 @@
 Changelog
 =========
 
+0.1.15 (2026-05-16)
+------------------
+
+New features
+~~~~~~~~~~~~
+
+- **Power analysis** — ``causaltensor.analysis.power_analysis``: CLI and programmatic API for A/A null draws, empirical |τ| critical values, Monte Carlo power over a relative-effect grid; CSV + Matplotlib figures under ``analysis/results/power_analysis/<dataset>/``.
+- **Empirical power helpers** — ``causaltensor.semi_synthetic.empirical_power`` for thresholds and power grids (used by the power-analysis pipeline).
+- **Real-data report** — ``run_real_data_report`` / ``save_report``: one ``get_fit_result_from_method`` fit per estimator for both the summary table and optional counterfactual PNGs (Plotly static export); writes ``<root>/<dataset>/real_data_report_<dataset>.csv``; CLI ``--plots`` and ``--plot-unit-row``.
+- **Semi-synthetic analysis script** — optional ``--plots`` saves relative-error box plot PNGs alongside the detailed/aggregated CSVs.
+
+Improvements & fixes
+~~~~~~~~~~~~~~~~~~~~
+
+- **OLS synthetic control** and **robust synthetic control**: staggered adoption (unit-specific treatment starts; donor pre-periods and ATT aligned with assignment geometry).
+- **Result objects** — ``Result(..., return_tau_scalar=True)`` coerces scalar and array ``tau`` safely (fixes NumPy 0-d ``tau`` from robust SC).
+- **Utilities** — ``causaltensor.utils.common.get_fit_result_from_method`` centralizes panel fits used for reporting and diagnostics.
+
+Documentation & packaging
+~~~~~~~~~~~~~~~~~~~~~~~~~
+
+- Tutorial guide notebooks refreshed; README updates; optional ``kaleido`` dependency for Plotly PNG export.
+- Removed ``causaltensor.analysis.aa_tests`` in favor of the semi-synthetic A/A workflow.
+
 0.1.14 (2026-05-15)
 ------------------
 
