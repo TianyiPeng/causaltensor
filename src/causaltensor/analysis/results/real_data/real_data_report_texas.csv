@@ -1,0 +1,8 @@
+dataset,n,T,n_treated_cells,n_treated_units,treated_unit_indices,treatment_start_col_indices,method,tau_hat,ok,error
+texas,51,16,8,1,[43],[8],DC_PR_auto_rank,268.58024631908006,True,
+texas,51,16,8,1,[43],[8],MC_NNM_CV,1546.5181795726012,True,
+texas,51,16,8,1,[43],[8],CovariancePCA,3984.9416324772196,True,
+texas,51,16,8,1,[43],[8],DID,1623.3617379760756,True,
+texas,51,16,8,1,[43],[8],SDID,1304.473463182544,True,
+texas,51,16,8,1,[43],[8],SC,1199.1978049871238,True,
+texas,51,16,8,1,[43],[8],RobustSyntheticControl,374.876487340103,True,

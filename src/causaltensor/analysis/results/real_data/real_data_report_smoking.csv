@@ -1,0 +1,8 @@
+dataset,n,T,n_treated_cells,n_treated_units,treated_unit_indices,treatment_start_col_indices,method,tau_hat,ok,error
+smoking,39,31,13,1,[2],[18],DC_PR_auto_rank,-13.931009043941225,True,
+smoking,39,31,13,1,[2],[18],MC_NNM_CV,-19.810581124941944,True,
+smoking,39,31,13,1,[2],[18],CovariancePCA,-46.38954246523668,True,
+smoking,39,31,13,1,[2],[18],DID,-26.485953626576926,True,
+smoking,39,31,13,1,[2],[18],SDID,-15.393271128225166,True,
+smoking,39,31,13,1,[2],[18],SC,-18.42774836728975,True,
+smoking,39,31,13,1,[2],[18],RobustSyntheticControl,-21.953372067164317,True,
