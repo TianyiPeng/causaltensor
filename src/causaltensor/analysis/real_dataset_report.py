@@ -1,6 +1,6 @@
 """
 Real-dataset treatment-effect reports using the same estimators as
-``utils.common.get_tau_from_method`` (DC-PR, MC-NNM CV, Covariance PCA,
+``utils.common.get_fit_result_from_method`` (DC-PR, MC-NNM CV, Covariance PCA,
 DID, SDID, OLS-SC, Robust SC).
 
 Only datasets that ship with a treatment matrix ``Z`` can produce a full report
@@ -9,7 +9,9 @@ Only datasets that ship with a treatment matrix ``Z`` can produce a full report
 not exposed in :func:`~causaltensor.datasets.load_dataset` until a sampling
 strategy is in place.
 
-The CLI requires one dataset name and writes ``real_data_report_<dataset>.csv``.
+The CLI requires one dataset name and writes ``real_data_report_<dataset>.csv`` under
+``results/real_data/<dataset>/`` (or ``<out-dir>/<dataset>/`` if ``--out-dir`` is set).
+Use ``--plots`` to also save counterfactual PNGs in the same folder.
 """
 
 from __future__ import annotations
@@ -25,13 +27,13 @@ import pandas as pd
 from causaltensor.datasets.dataset_loader import available_datasets, load_dataset
 from causaltensor.utils.common import (
     extract_treatment_info_from_Z,
-    get_tau_from_method_with_error,
+    get_fit_result_from_method,
 )
 from causaltensor.utils.panel import default_raw_datasets_path, prepare_panel
 
 logger = logging.getLogger(__name__)
 
-# Match default methods in semi_synthetic (main() docstring and get_tau_from_method).
+# Match default methods in semi_synthetic / get_fit_result_from_method.
 DEFAULT_METHODS: Tuple[str, ...] = (
     "DC_PR_auto_rank",
     "MC_NNM_CV",
@@ -49,6 +51,7 @@ def datasets_with_treatment_pattern() -> Tuple[str, ...]:
     """Built-in dataset names that include a treatment matrix ``Z``."""
     return tuple(n for n in available_datasets() if n not in _DATASETS_WITHOUT_Z)
 
+
 def _tau_to_report_scalar(tau: Union[float, np.ndarray]) -> float:
     """Reduce vector/matrix tau estimates to a single float for tabular reports."""
     if tau is None:
@@ -61,28 +64,37 @@ def _tau_to_report_scalar(tau: Union[float, np.ndarray]) -> float:
     return float(np.nanmean(arr))
 
 
-def run_report_for_dataset(
+def run_real_data_report(
     dataset_name: str,
     methods: Sequence[str] = DEFAULT_METHODS,
     datasets_path: Optional[str] = None,
+    *,
+    counterfactual_output_dir: Optional[Union[str, Path]] = None,
+    counterfactual_unit_row: Optional[int] = None,
 ) -> pd.DataFrame:
     """
-    Run each estimator on observed ``(Y, Z)`` and return one row per method.
+    Fit each estimator on observed ``(Y, Z)`` (one table row per method).
+
+    Uses :func:`~causaltensor.utils.common.get_fit_result_from_method` once per
+    method; ``tau_hat`` and optional counterfactual PNGs come from the same fit.
 
     Parameters
     ----------
     dataset_name : str
-        Name accepted by ``load_dataset``.
+        Argument to ``load_dataset``.
     methods : sequence of str
-        Estimator keys (same as ``utils.common.get_tau_from_method``).
+        Estimator keys accepted by ``get_fit_result_from_method``.
     datasets_path : str, optional
-        Path to ``datasets/raw``. Defaults to package ``causaltensor/datasets/raw``.
+        ``datasets/raw`` directory; default is the package raw folder.
+    counterfactual_output_dir : path-like, optional
+        If set, write ``counterfactual_<method>.png`` here for each successful fit.
+    counterfactual_unit_row : int, optional
+        Treated row index for plots (default: first treated row in ``Z``).
 
     Returns
     -------
     pd.DataFrame
-        Columns include ``dataset``, ``method``, ``tau_hat``, ``ok``, ``error``,
-        panel shape, and treatment summary.
+        Report columns plus, when PNGs are written, ``df.attrs["counterfactual_png_paths"]``.
     """
     if datasets_path is None:
         datasets_path = default_raw_datasets_path()
@@ -101,6 +113,27 @@ def run_report_for_dataset(
 
     n, T = O.shape
     rows: List[dict] = []
+    cf_paths: list[Path] = []
+    plot_out = Path(counterfactual_output_dir) if counterfactual_output_dir is not None else None
+
+    plot_unit: Optional[int] = None
+    unit_label: Optional[str] = None
+    time_labels: Optional[list[str]] = None
+    if plot_out is not None and Z is not None and np.any(Z):
+        plot_out.mkdir(parents=True, exist_ok=True)
+        tr = np.where(np.any(np.asarray(Z, dtype=float) > 0, axis=1))[0]
+        if tr.size > 0:
+            plot_unit = int(tr[0]) if counterfactual_unit_row is None else int(counterfactual_unit_row)
+            if 0 <= plot_unit < O.shape[0]:
+                unit_label = str(Y_df.index[plot_unit])
+                time_labels = [str(c) for c in Y_df.columns]
+            else:
+                logger.warning(
+                    "counterfactual_unit_row=%s out of range for N=%s; skipping plots.",
+                    plot_unit,
+                    O.shape[0],
+                )
+                plot_unit = None
 
     if Z is None:
         for method in methods:
@@ -120,10 +153,10 @@ def run_report_for_dataset(
         return pd.DataFrame(rows)
 
     for method in methods:
-        tau_raw, err = get_tau_from_method_with_error(method, O, Z)
-        tau_hat = _tau_to_report_scalar(tau_raw) if err is None else float("nan")
-        ok = err is None and np.isfinite(tau_hat)
-        err_out = err or ("" if ok else "non-finite tau_hat")
+        res, err = get_fit_result_from_method(method, O, Z)
+        tau_hat = _tau_to_report_scalar(res.tau) if res is not None else float("nan")
+        ok = err is None and res is not None and np.isfinite(tau_hat)
+        err_out = err if err is not None else ("" if ok else "non-finite tau_hat")
         rows.append(
             {
                 "dataset": dataset_name,
@@ -139,30 +172,31 @@ def run_report_for_dataset(
                 "error": err_out,
             }
         )
+        if (
+            plot_out is not None
+            and plot_unit is not None
+            and unit_label is not None
+            and time_labels is not None
+            and res is not None
+        ):
+            try:
+                fig = res.plot_actual_vs_counterfactual(
+                    plot_unit,
+                    unit_label=unit_label,
+                    time_labels=time_labels,
+                    title=f"{method} — {dataset_name} — {unit_label}",
+                )
+                path = plot_out / f"counterfactual_{method}.png"
+                fig.write_image(str(path), scale=2)
+                logger.info("Wrote %s", path)
+                cf_paths.append(path)
+            except Exception as exc:
+                logger.warning("Counterfactual plot failed for %s: %s", method, exc)
 
-    return pd.DataFrame(rows)
-
-
-def run_real_data_report(
-    dataset_name: str,
-    methods: Sequence[str] = DEFAULT_METHODS,
-    datasets_path: Optional[str] = None,
-) -> pd.DataFrame:
-    """
-    Run each estimator on observed ``(Y, Z)`` for one dataset (one row per method).
-
-    Parameters
-    ----------
-    dataset_name : str
-        Name accepted by ``load_dataset``.
-    methods : sequence of str
-        Estimator keys (same as ``utils.common.get_tau_from_method``).
-    datasets_path : str, optional
-        Path to ``datasets/raw``. Defaults to package ``causaltensor/datasets/raw``.
-    """
-    return run_report_for_dataset(
-        dataset_name, methods=methods, datasets_path=datasets_path
-    )
+    df = pd.DataFrame(rows)
+    if cf_paths:
+        df.attrs["counterfactual_png_paths"] = cf_paths
+    return df
 
 
 def print_report_table(df: pd.DataFrame) -> None:
@@ -211,23 +245,16 @@ def print_report_table(df: pd.DataFrame) -> None:
 
 def save_report(
     df: pd.DataFrame,
+    dataset_name: str,
+    *,
     output_dir: Optional[Union[str, Path]] = None,
-    dataset_name: Optional[str] = None,
     prefix: str = "real_data_report",
 ) -> Path:
-    """
-    Write CSV under ``output_dir``.
-
-    Returns
-    -------
-    csv_path : Path
-    """
-    if output_dir is None:
-        output_dir = Path(__file__).resolve().parent / "results" / "real_data"
-    output_dir = Path(output_dir)
-    output_dir.mkdir(parents=True, exist_ok=True)
-    stem = f"{prefix}_{dataset_name}" if dataset_name else prefix
-    csv_path = output_dir / f"{stem}.csv"
+    """Write ``<root>/<dataset_name>/<prefix>_<dataset_name>.csv`` (default root: package ``results/real_data``)."""
+    root = Path(output_dir) if output_dir else Path(__file__).resolve().parent / "results" / "real_data"
+    out = root / dataset_name
+    out.mkdir(parents=True, exist_ok=True)
+    csv_path = out / f"{prefix}_{dataset_name}.csv"
     df.to_csv(csv_path, index=False)
     logger.info("Wrote %s", csv_path)
     return csv_path
@@ -250,17 +277,54 @@ def main(argv: Optional[Sequence[str]] = None) -> pd.DataFrame:
     parser.add_argument(
         "--out-dir",
         default=None,
-        help="Output directory for CSV (default: analysis/results/real_data).",
+        help=(
+            "Output root (default: analysis/results/real_data). "
+            "CSV is written to <root>/<dataset>/real_data_report_<dataset>.csv; "
+            "--plots PNGs use the same folder."
+        ),
+    )
+    parser.add_argument(
+        "--plots",
+        action="store_true",
+        help=(
+            "Save counterfactual PNGs in the same folder as the CSV for this dataset."
+        ),
+    )
+    parser.add_argument(
+        "--plot-unit-row",
+        type=int,
+        default=None,
+        help="Row index of treated unit to plot (default: first treated row).",
     )
     args = parser.parse_args(argv)
 
-    df = run_real_data_report(dataset_name=args.dataset, datasets_path=args.raw_path)
-    out_path = save_report(df, output_dir=args.out_dir, dataset_name=args.dataset)
+    plot_dir = None
+    if args.plots:
+        plot_dir = (
+            Path(args.out_dir) / args.dataset
+            if args.out_dir
+            else Path(__file__).resolve().parent / "results" / "real_data" / args.dataset
+        )
+
+    df = run_real_data_report(
+        dataset_name=args.dataset,
+        datasets_path=args.raw_path,
+        counterfactual_output_dir=plot_dir,
+        counterfactual_unit_row=args.plot_unit_row,
+    )
+    out_path = save_report(df, args.dataset, output_dir=args.out_dir)
     print_report_table(df)
     print(f"\nReport saved to {out_path}")
+
+    cf_paths = df.attrs.get("counterfactual_png_paths", [])
+    if cf_paths:
+        print(f"Counterfactual figures ({len(cf_paths)}) under {cf_paths[0].parent}")
     return df
 
 
 if __name__ == "__main__":
     logging.basicConfig(level=logging.INFO)
+    # Plotly PNG export (Kaleido) spawns Chromium per figure; those libraries log loudly at INFO.
+    for _name in ("kaleido", "choreographer"):
+        logging.getLogger(_name).setLevel(logging.WARNING)
     main()

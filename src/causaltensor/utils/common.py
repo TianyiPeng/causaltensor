@@ -7,16 +7,19 @@ real_dataset_report (observed-data report), and any future analysis modules.
 
 from __future__ import annotations
 
+from typing import Optional, Tuple
+
 import numpy as np
 import pandas as pd
 
-from causaltensor.cauest.DebiasConvex import DC_PR_auto_rank
-from causaltensor.cauest.MCNNM import MC_NNM_with_cross_validation
-from causaltensor.cauest.DID import DID
-from causaltensor.cauest.SDID import SDID
-from causaltensor.cauest.RobustSyntheticControl import robust_synthetic_control
-from causaltensor.cauest.OLSSyntheticControl import ols_synthetic_control
 from causaltensor.cauest.CovariancePCA import CovariancePCAPanelSolver
+from causaltensor.cauest.DebiasConvex import DC_PR_auto_rank, DCPanelSolver
+from causaltensor.cauest.DID import DID, DIDPanelSolver
+from causaltensor.cauest.MCNNM import MCNNMPanelSolver, MC_NNM_with_cross_validation
+from causaltensor.cauest.OLSSyntheticControl import OLSSCPanelSolver, ols_synthetic_control
+from causaltensor.cauest.RobustSyntheticControl import robust_synthetic_control
+from causaltensor.cauest.SDID import SDID, SDIDPanelSolver
+from causaltensor.cauest.result import Result
 
 
 def extract_treatment_info_from_Z(Y_df: pd.DataFrame, Z_df: pd.DataFrame | None):
@@ -135,3 +138,50 @@ def get_tau_from_method(method_name: str, O_syn: np.ndarray, Z: np.ndarray) -> f
     if err is not None:
         print(f"    Warning: {method_name} failed with error: {err}")
     return tau_hat
+
+
+def get_fit_result_from_method(
+    method_name: str,
+    O: np.ndarray,
+    Z: np.ndarray,
+) -> Tuple[Optional[Result], Optional[str]]:
+    """
+    Fit one estimator and return the :class:`~causaltensor.cauest.result.Result`
+    (for diagnostics and :meth:`Result.plot_actual_vs_counterfactual`).
+
+    Returns
+    -------
+    result : Result or None
+    error : str or None
+    """
+    O = np.asarray(O, dtype=float)
+    Z = np.asarray(Z, dtype=float)
+    try:
+        if method_name == "DC_PR_auto_rank":
+            res = DCPanelSolver(O, Z).fit(
+                spectrum_cut=0.002, method="convex", method_non_neg=None
+            )
+        elif method_name == "MC_NNM_CV":
+            Omega = 1.0 - Z
+            solver = MCNNMPanelSolver(Z=1.0 - Omega)
+            res = solver.solve_with_cross_validation(O, K=5, list_l=None)
+            res.O = O
+            res.Z = Z
+        elif method_name == "CovariancePCA":
+            res = CovariancePCAPanelSolver(O, Z).fit()
+        elif method_name == "DID":
+            res = DIDPanelSolver(O, Z).fit()
+        elif method_name == "SDID":
+            res = SDIDPanelSolver(O, Z).fit()
+        elif method_name == "SC":
+            res = OLSSCPanelSolver(O, Z).fit()
+        elif method_name == "RobustSyntheticControl":
+            Mhat, tau = robust_synthetic_control(O, Z)
+            res = Result(baseline=Mhat, tau=tau, return_tau_scalar=True)
+            res.O = O
+            res.Z = Z
+        else:
+            return None, f"Unknown method: {method_name}"
+        return res, None
+    except Exception as e:
+        return None, str(e)

@@ -25,11 +25,13 @@ class Result:
         self.O = None
         self.Z = None
         if return_tau_scalar:
-            self.tau = tau[0]
+            # tau may be 0-d (numpy scalar); tau[0] raises "invalid index to scalar variable".
+            if tau is not None:
+                self.tau = float(np.asarray(tau).ravel()[0])
             if self.covariance_tau is not None:
-                self.covariance_tau = covariance_tau[0, 0]
+                self.covariance_tau = float(np.asarray(self.covariance_tau).ravel()[0])
             if self.std_tau is not None:
-                self.std_tau = std_tau[0]
+                self.std_tau = float(np.asarray(self.std_tau).ravel()[0])
 
     # ------------------------------------------------------------------ #
     #  Core derived arrays                                                 #

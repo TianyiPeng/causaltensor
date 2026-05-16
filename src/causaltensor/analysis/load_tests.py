@@ -115,7 +115,7 @@ def run_load_test(
         methods = list(DEFAULT_METHODS)
 
     results = []
-    total = len(list(N_sizes)) * len(list(T_sizes)) * len(methods)
+    total = len(N_sizes) * len(T_sizes) * len(methods)
     done = 0
 
     for cell_idx, (N, T) in enumerate(

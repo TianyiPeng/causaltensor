@@ -2,7 +2,7 @@
 Power analysis pipeline on a built-in dataset: A/A null simulations, empirical
 thresholds, Monte Carlo power, plots, and CSVs.
 
-All outputs go under one folder per dataset::
+All outputs go under one folder per dataset:
 
     analysis/results/power_analysis/<dataset_name>/
 
@@ -23,6 +23,7 @@ import logging
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Sequence, Tuple
 
+import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
 
@@ -92,8 +93,6 @@ def run_power_analysis_for_baseline(
     seed_null, seed_power
         Seeds for ``run_aa_test`` and ``run_empirical_power_grid`` respectively.
     """
-    import matplotlib.pyplot as plt
-
     output_dir = Path(output_dir)
     output_dir.mkdir(parents=True, exist_ok=True)
 
@@ -322,8 +321,8 @@ def main(argv: Optional[Sequence[str]] = None) -> List[Dict[str, Any]]:
         type=float,
         default=None,
         help=(
-            "Relative effect grid δ; default: linspace(0, 0.35, 8). "
-            "Example: --rel-effects 0 0.05 0.1 0.2"
+            "Relative effect grid δ; default: nine values from 0 to 0.2 (see "
+            "DEFAULT_RELATIVE_EFFECTS). Example: --rel-effects 0 0.05 0.1 0.2"
         ),
     )
     parser.add_argument(
