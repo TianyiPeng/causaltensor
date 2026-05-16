@@ -3,11 +3,12 @@ causaltensor.analysis
 ---------------------
 Modules that run experiments and generate reports:
 
-- semi_synthetic      : semi-synthetic power/accuracy experiments (inject known
+- semi_synthetic      : semi-synthetic power/accuracy experiments on one dataset (inject known
                         treatment into real or generated panels, compare estimators)
-- real_dataset_report : run each estimator on real datasets that include an
-                        observed treatment matrix and tabulate the results
-- aa_tests            : A/A power analysis (zero-treatment verification)
+- real_dataset_report : run each estimator on one real dataset (observed ``Z``)
+                        and tabulate the results
+- aa_tests            : A/A power analysis (zero-treatment verification) on one
+                        dataset
 - load_tests          : load tests — wall-clock time and peak memory across
                         N×T grids for all estimators
 

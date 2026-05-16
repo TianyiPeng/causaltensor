@@ -3,11 +3,13 @@ Real-dataset treatment-effect reports using the same estimators as
 ``utils.common.get_tau_from_method`` (DC-PR, MC-NNM CV, Covariance PCA,
 DID, SDID, OLS-SC, Robust SC).
 
-Only datasets that ship with a treatment matrix ``Z`` are included by default
+Only datasets that ship with a treatment matrix ``Z`` can produce a full report
 (classic case studies and PWT benchmarks). Large recommendation-style panels
 (retailrocket, dunnhumby, truus, movielens) have loader implementations but are
 not exposed in :func:`~causaltensor.datasets.load_dataset` until a sampling
 strategy is in place.
+
+The CLI requires one dataset name and writes ``real_data_report_<dataset>.csv``.
 """
 
 from __future__ import annotations
@@ -15,7 +17,7 @@ from __future__ import annotations
 import argparse
 import logging
 from pathlib import Path
-from typing import Iterable, List, Optional, Sequence, Tuple, Union
+from typing import List, Optional, Sequence, Tuple, Union
 
 import numpy as np
 import pandas as pd
@@ -46,7 +48,6 @@ _DATASETS_WITHOUT_Z = frozenset({"retailrocket", "truus", "movielens"})
 def datasets_with_treatment_pattern() -> Tuple[str, ...]:
     """Built-in dataset names that include a treatment matrix ``Z``."""
     return tuple(n for n in available_datasets() if n not in _DATASETS_WITHOUT_Z)
-
 
 def _tau_to_report_scalar(tau: Union[float, np.ndarray]) -> float:
     """Reduce vector/matrix tau estimates to a single float for tabular reports."""
@@ -143,25 +144,25 @@ def run_report_for_dataset(
 
 
 def run_real_data_report(
-    dataset_names: Optional[Iterable[str]] = None,
+    dataset_name: str,
     methods: Sequence[str] = DEFAULT_METHODS,
     datasets_path: Optional[str] = None,
 ) -> pd.DataFrame:
     """
-    Concatenate per-dataset reports for all datasets that have ``Z``.
+    Run each estimator on observed ``(Y, Z)`` for one dataset (one row per method).
 
     Parameters
     ----------
-    dataset_names : iterable of str, optional
-        If omitted, uses ``datasets_with_treatment_pattern()``.
-    methods, datasets_path
-        Passed through to :func:`run_report_for_dataset`.
+    dataset_name : str
+        Name accepted by ``load_dataset``.
+    methods : sequence of str
+        Estimator keys (same as ``utils.common.get_tau_from_method``).
+    datasets_path : str, optional
+        Path to ``datasets/raw``. Defaults to package ``causaltensor/datasets/raw``.
     """
-    names = list(dataset_names) if dataset_names is not None else list(datasets_with_treatment_pattern())
-    frames = [run_report_for_dataset(name, methods=methods, datasets_path=datasets_path) for name in names]
-    if not frames:
-        return pd.DataFrame()
-    return pd.concat(frames, ignore_index=True)
+    return run_report_for_dataset(
+        dataset_name, methods=methods, datasets_path=datasets_path
+    )
 
 
 def print_report_table(df: pd.DataFrame) -> None:
@@ -211,6 +212,7 @@ def print_report_table(df: pd.DataFrame) -> None:
 def save_report(
     df: pd.DataFrame,
     output_dir: Optional[Union[str, Path]] = None,
+    dataset_name: Optional[str] = None,
     prefix: str = "real_data_report",
 ) -> Path:
     """
@@ -224,7 +226,8 @@ def save_report(
         output_dir = Path(__file__).resolve().parent / "results" / "real_data"
     output_dir = Path(output_dir)
     output_dir.mkdir(parents=True, exist_ok=True)
-    csv_path = output_dir / f"{prefix}.csv"
+    stem = f"{prefix}_{dataset_name}" if dataset_name else prefix
+    csv_path = output_dir / f"{stem}.csv"
     df.to_csv(csv_path, index=False)
     logger.info("Wrote %s", csv_path)
     return csv_path
@@ -233,10 +236,11 @@ def save_report(
 def main(argv: Optional[Sequence[str]] = None) -> pd.DataFrame:
     parser = argparse.ArgumentParser(description="Real-data causal estimates report.")
     parser.add_argument(
-        "datasets",
-        nargs="*",
-        default=None,
-        help="Dataset names (default: all datasets with treatment Z).",
+        "dataset",
+        help=(
+            "Dataset name (required), e.g. smoking, basque — same as load_dataset. "
+            "Output: real_data_report_<dataset>.csv"
+        ),
     )
     parser.add_argument(
         "--raw-path",
@@ -246,14 +250,14 @@ def main(argv: Optional[Sequence[str]] = None) -> pd.DataFrame:
     parser.add_argument(
         "--out-dir",
         default=None,
-        help="Output directory for CSV and TXT (default: analysis/results/real_data).",
+        help="Output directory for CSV (default: analysis/results/real_data).",
     )
     args = parser.parse_args(argv)
 
-    names = args.datasets if args.datasets else None
-    df = run_real_data_report(dataset_names=names, datasets_path=args.raw_path)
-    save_report(df, output_dir=args.out_dir)
+    df = run_real_data_report(dataset_name=args.dataset, datasets_path=args.raw_path)
+    out_path = save_report(df, output_dir=args.out_dir, dataset_name=args.dataset)
     print_report_table(df)
+    print(f"\nReport saved to {out_path}")
     return df
 
 
