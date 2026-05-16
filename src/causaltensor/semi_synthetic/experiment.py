@@ -41,8 +41,8 @@ DEFAULT_METHODS: Dict[str, List[str]] = {
     "CovariancePCA":   ["IID", "Block", "Staggered", "Adaptive"],
     "DID":             ["Block", "Staggered"],
     "SDID":            ["Block", "Staggered"],
-    "SC":              ["Block"],
-    "RobustSyntheticControl": ["Block"],
+    "SC":              ["Block", "Staggered"],
+    "RobustSyntheticControl": ["Block", "Staggered"],
 }
 
 

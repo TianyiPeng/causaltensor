@@ -75,7 +75,8 @@ def robust_synthetic_control(O, Z, suggest_r=-1):
     O : ndarray, shape (N, T)
         Outcome panel (units × time).
     Z : ndarray, shape (N, T)
-        Treatment matrix; entries 1 in post-treatment windows for treated units.
+        Treatment matrix; ``Z[i, t] = 1`` when unit ``i`` is treated at time
+        ``t``.
     suggest_r : int, optional
         Fixed rank if ``>= 1``. Use ``-1`` (default) to select ``r`` by CV.
 
@@ -98,10 +99,13 @@ def robust_synthetic_control(O, Z, suggest_r=-1):
     if len(treat_units) == 0:
         raise ValueError("No treated units found in Z (need at least one row with some Z==1).")
 
-    treated_sums = np.sum(Z[treat_units, :], axis=1).astype(int)
-    starting_time = O.shape[1] - int(np.min(treated_sums))
+    # Per-unit treatment start times 
+    starting_times = np.array([
+        int(np.where(Z[i, :] == 1)[0][0])
+        for i in treat_units
+    ])
 
-    if starting_time == 0:
+    if int(np.min(starting_times)) == 0:
         raise ValueError("Treatment starts at t=0 for at least one treated unit; need a positive pre-treatment window.")
 
     donor_units = [i for i in range(O.shape[0]) if i not in treat_set]
@@ -115,37 +119,40 @@ def robust_synthetic_control(O, Z, suggest_r=-1):
     if len(s) == 0:
         raise ValueError("SVD produced no singular values (empty donor panel?).")
 
-    def recover(r, start, end):
+    def recover(r):
         r = int(min(max(r, 1), len(s)))
         Mnew = (u[:, :r] * s[:r]).dot(vh[:r, :])
         Mhat = np.zeros_like(O)
         Mhat[donor_units, :] = Mnew
 
-        # Precompute pinv once — Mminus is the same for all treated units.
-        Mminus = Mnew[:, :start]                    # (n_donor, T0)
-        Mminus_pinv = np.linalg.pinv(Mminus.T)      # (n_donor, T0)
-        treated_pre = O[treat_units, :start]         # (n_treated, T0)
-        coefs = treated_pre.dot(Mminus_pinv.T)       # (n_treated, n_donor)
-        Mhat[treat_units, :] = coefs.dot(Mnew)       # (n_treated, T)
+        cv_mse = 0.0
+        for idx, i in enumerate(treat_units):
+            start_i = int(starting_times[idx])
+            # Fit treated unit i using only its own pre-period.
+            Mminus_i = Mnew[:, :start_i]                          # (n_donor, T0_i)
+            coef_i = np.linalg.pinv(Mminus_i.T).dot(O[i, :start_i])  # (n_donor,)
+            Mhat[i, :] = Mnew.T.dot(coef_i)                       # (T,)
+            # CV MSE: second half of this unit's pre-period.
+            valid_start_i = int(start_i / 2 + 0.5)
+            cv_mse += np.sum(
+                (Mhat[i, valid_start_i:start_i] - O[i, valid_start_i:start_i]) ** 2
+            )
 
-        mse = np.sum((Mhat - O)[treat_units, start:end] ** 2)
-        return mse, Mhat
+        return cv_mse, Mhat
 
     if suggest_r == -1:
         energy = float(np.sum(s))
         if energy <= 0:
             raise ValueError("Sum of singular values is zero; cannot run rank CV.")
 
-        valid_start = int(starting_time / 2 + 0.5)
-
         opt_mse = np.inf
         opt_r = min(2, len(s))
 
-        # Cross-validation over r: minimize pre-period MSE on treated units.
+        # Cross-validation over r: minimise total pre-period MSE across treated units.
         for r in range(1, len(s)):
-            if (np.sum(s[r - 1 :]) / energy) <= 0.03:
+            if (np.sum(s[r - 1:]) / energy) <= 0.03:
                 break
-            mse, _ = recover(r, valid_start, starting_time)
+            mse, _ = recover(r)
             if mse < opt_mse:
                 opt_mse = mse
                 opt_r = r
@@ -156,11 +163,8 @@ def robust_synthetic_control(O, Z, suggest_r=-1):
                 f"suggest_r must be in [1, {len(s)}] or -1 for CV; got {suggest_r!r}."
             )
 
-    _, mhat = recover(opt_r, starting_time, O.shape[1])
-
-    z_at = np.zeros_like(O)
-    z_at[treat_units, starting_time:] = 1
-    tau = np.sum(z_at * (O - mhat)) / np.sum(z_at)
+    _, mhat = recover(opt_r)
+    tau = np.sum(Z * (O - mhat)) / np.sum(Z)
     return mhat, tau
 
 
@@ -184,7 +188,9 @@ class RSCPanelSolver(PanelSolver):
     Robust Synthetic Control estimator.
 
     Builds a low-rank donor-panel approximation via truncated SVD and projects
-    treated units onto the donor subspace using their pre-treatment periods.
+    treated units onto the donor subspace using their individual pre-treatment
+    periods.  Both block treatment (single common adoption date) and staggered
+    adoption (unit-specific onset times) are supported.
     Rank ``r`` is either supplied or chosen by pre-period cross-validation.
 
     Parameters
@@ -192,7 +198,8 @@ class RSCPanelSolver(PanelSolver):
     O : ndarray, shape (N, T)
         Observed outcome panel (units × time).
     Z : ndarray, shape (N, T)
-        Binary treatment mask (1 = treated).
+        Binary treatment mask (1 = treated).  Block and staggered patterns
+        are both supported.
     suggest_r : int, optional
         Fixed SVD rank if ``>= 1``; use ``-1`` (default) for CV.
 
