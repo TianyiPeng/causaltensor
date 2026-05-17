@@ -319,7 +319,9 @@ def run_real_data_report(
     dataset_name : str
         Argument to ``load_dataset``.
     methods : sequence of str
-        Estimator keys accepted by ``get_fit_result_from_method``.
+        Estimator keys accepted by ``get_fit_result_from_method``. For dataset
+        ``dunnhumby``, the list is filtered to methods valid for general /
+        Adaptive assignment (DC-PR, MC-NNM CV, Covariance PCA only).
     datasets_path : str, optional
         ``datasets/raw`` directory; default is the package raw folder.
     counterfactual_output_dir : path-like, optional
@@ -340,6 +342,9 @@ def run_real_data_report(
     """
     if datasets_path is None:
         datasets_path = default_raw_datasets_path()
+
+    if dataset_name.lower() == "dunnhumby":
+        methods = ["DC_PR_auto_rank", "MC_NNM_CV", "CovariancePCA"]
 
     Y_df, Z_df, _X_df = load_dataset(dataset_name, datasets_path=datasets_path)
     O, Z = prepare_panel(Y_df, Z_df)
