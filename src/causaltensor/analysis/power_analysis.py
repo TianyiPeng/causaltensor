@@ -142,7 +142,9 @@ def run_power_analysis_for_baseline(
     df_power.to_csv(path_power, index=False)
     logger.info("Wrote %s", path_power)
 
-    fig_null, _ = plot_aa_null_figure(df_null, bins=min(20, max(8, n_trials_null // 2)))
+    fig_null, _ = plot_aa_null_figure(
+        df_null, grid_points=max(128, min(512, 8 * n_trials_null))
+    )
     path_fig_null = output_dir / f"{file_prefix}null_tau_distribution.png"
     fig_null.savefig(path_fig_null, dpi=plot_dpi, bbox_inches="tight")
     plt.close(fig_null)
@@ -286,13 +288,13 @@ def main(argv: Optional[Sequence[str]] = None) -> List[Dict[str, Any]]:
     parser.add_argument(
         "--n-trials-null",
         type=int,
-        default=40,
+        default=500,
         help="Monte Carlo draws per (pattern, method) for null A/A (default: 40).",
     )
     parser.add_argument(
         "--n-trials-power",
         type=int,
-        default=120,
+        default=200,
         help="Monte Carlo replications per (delta, pattern, method) for power (default: 120).",
     )
     parser.add_argument(

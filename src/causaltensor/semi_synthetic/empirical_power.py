@@ -10,7 +10,7 @@ Empirical rejection thresholds and Monte Carlo power (fixed baseline :math:`M`, 
    from :func:`~causaltensor.semi_synthetic.aa_test.run_aa_test`.
 2. Power grid: inject :math:`O = M + \delta\,\mathrm{mean}(|M|)\, Z_{\mathrm{syn}}`, reject if :math:`|\hat\tau|>c`.
 
-For the **null histogram** of :math:`\hat\tau`, see :func:`~causaltensor.semi_synthetic.aa_test.plot_aa_null_figure`.
+For the **null distribution plot** (KDE) of :math:`\hat\tau`, see :func:`~causaltensor.semi_synthetic.aa_test.plot_aa_null_figure`.
 """
 
 from __future__ import annotations
@@ -185,6 +185,7 @@ def plot_empirical_power_figure(
     """
     import matplotlib.pyplot as plt
 
+    plt.style.use("seaborn-v0_8-whitegrid")
     patterns = list(dict.fromkeys(power_df["pattern"].tolist()))
     methods = list(dict.fromkeys(power_df["method"].tolist()))
     n_p = len(patterns)
@@ -210,7 +211,9 @@ def plot_empirical_power_figure(
         ax.set_ylim(-0.05, 1.05)
         ax.axhline(0.8, color="gray", linestyle=":", linewidth=0.8)
         ax.set_title(f"Empirical power — pattern = {pat}")
-        ax.set_xlabel(r"relative effect $\delta$ (inject $\delta \cdot \mathrm{mean}(|M|)$ on treated cells)")
+        ax.set_xlabel(
+            r"relative effect $\delta$ (inject $\delta \cdot \mathrm{mean}(|M|)$ on treated cells)"
+        )
         ax.set_ylabel("power")
         ax.legend(fontsize=7, loc="lower right")
 

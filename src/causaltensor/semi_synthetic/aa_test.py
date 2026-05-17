@@ -5,7 +5,7 @@ An A/A test checks estimators on a **fixed baseline** panel ``M`` (true effect z
 with **independent random synthetic** treatment masks ``Z_syn`` each trial — Monte
 Carlo variation comes from assignment geometry, not from many field experiments.
 
-Use :func:`plot_aa_null_figure` (this module) for null histograms, and
+Use :func:`plot_aa_null_figure` (this module) for the null KDE figure, and
 :func:`run_empirical_power_grid` / :func:`plot_empirical_power_figure` in
 ``causaltensor.semi_synthetic.empirical_power`` for empirical critical values
 and power curves (TestOps-style workflow without ad-hoc |τ|/std(M) cutoffs).
@@ -274,20 +274,41 @@ def _print_aa_summary(df: pd.DataFrame) -> None:
     print(sep)
 
 
+def _kde_density_curve(
+    x: np.ndarray,
+    x_grid: np.ndarray,
+):
+    """
+    Evaluate a Gaussian KDE density at ``x_grid``. Returns None if KDE is not defined.
+    """
+    from scipy.stats import gaussian_kde
+
+    x = np.asarray(x, dtype=float)
+    x = x[np.isfinite(x)]
+    if x.size < 2:
+        return None
+    if np.std(x, ddof=1) < 1e-14 * (1.0 + abs(np.mean(x))):
+        return None
+    kde = gaussian_kde(x)
+    return kde(x_grid)
+
+
 def plot_aa_null_figure(
     null_df: pd.DataFrame,
     *,
-    bins: int = 20,
+    grid_points: int = 256,
     figsize: Tuple[float, float] = (12, 10),
 ):
     """
-    Histogram of ``tau_hat`` under the null for each pattern (subplot) and method (overlaid).
+    KDE (line only) of ``tau_hat`` under the null for each pattern (subplot) and
+    method (overlaid curves, no fill).
 
     Expects columns ``method``, ``pattern``, ``tau_hat`` as returned by
-    :func:`run_aa_test`. Requires ``matplotlib``.
+    :func:`run_aa_test`. Requires ``matplotlib`` and ``scipy``.
     """
     import matplotlib.pyplot as plt
 
+    plt.style.use("seaborn-v0_8-whitegrid")
     patterns = list(dict.fromkeys(null_df["pattern"].tolist()))
     methods = list(dict.fromkeys(null_df["method"].tolist()))
     n_p = len(patterns)
@@ -295,21 +316,34 @@ def plot_aa_null_figure(
         n_p, 1, figsize=(figsize[0], max(2.5, 2.8 * n_p)), squeeze=False
     )
     colors = plt.cm.tab10(np.linspace(0, 1, max(len(methods), 2)))
+    n_gp = max(32, int(grid_points))
 
     for ax, pat in zip(axes.flat, patterns):
         sub = null_df[null_df["pattern"] == pat]
+        all_tau = sub["tau_hat"].to_numpy(dtype=float)
+        all_tau = all_tau[np.isfinite(all_tau)]
+        if all_tau.size == 0:
+            ax.axvline(0.0, color="k", linestyle="--", linewidth=0.8)
+            ax.set_title(f"Null distribution — pattern = {pat}")
+            ax.set_xlabel(r"$\hat\tau$")
+            ax.set_ylabel("density")
+            continue
+        lo, hi = float(np.min(all_tau)), float(np.max(all_tau))
+        span = hi - lo
+        pad = 0.08 * span if span > 0 else max(abs(lo), abs(hi), 1.0) * 0.08
+        x_grid = np.linspace(lo - pad, hi + pad, n_gp)
+
         for k, meth in enumerate(methods):
             x = sub[sub["method"] == meth]["tau_hat"].to_numpy(dtype=float)
-            x = x[np.isfinite(x)]
-            if x.size == 0:
+            y = _kde_density_curve(x, x_grid)
+            if y is None:
                 continue
-            ax.hist(
-                x,
-                bins=bins,
-                density=True,
-                alpha=0.35,
+            ax.plot(
+                x_grid,
+                y,
                 color=colors[k % len(colors)],
                 label=meth,
+                linewidth=1.6,
             )
         ax.axvline(0.0, color="k", linestyle="--", linewidth=0.8)
         ax.set_title(f"Null distribution — pattern = {pat}")
