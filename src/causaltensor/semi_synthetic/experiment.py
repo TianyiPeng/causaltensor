@@ -12,7 +12,7 @@ Quickstart
 >>> rng = np.random.default_rng(0)
 >>> O = rng.standard_normal((20, 30))
 >>> Z = np.zeros((20, 30)); Z[0, 15:] = 1   # one treated unit, block treatment
->>> df = run_experiment(O, Z, methods=["DID", "SDID"], patterns=["Block"], n_trials=5)
+>>> df = run_experiment(O, Z, methods=["OLS_DID", "SDID"], patterns=["Block"], n_trials=5)
 >>> df.head()
 """
 
@@ -36,13 +36,13 @@ from causaltensor.utils.common import get_tau_from_method, treated_states_and_st
 VALID_PATTERNS: List[str] = ["IID", "Block", "Staggered", "Adaptive"]
 
 DEFAULT_METHODS: Dict[str, List[str]] = {
-    "DC_PR_auto_rank": ["IID", "Block", "Staggered", "Adaptive"],
-    "MC_NNM_CV":       ["IID", "Block", "Staggered", "Adaptive"],
-    "CovariancePCA":   ["IID", "Block", "Staggered", "Adaptive"],
-    "DID":             ["Block", "Staggered"],
-    "SDID":            ["Block", "Staggered"],
-    "SC":              ["Block", "Staggered"],
-    "RobustSyntheticControl": ["Block", "Staggered"],
+    "DCPR": ["IID", "Block", "Staggered", "Adaptive"],
+    "MC_NNM_CV": ["IID", "Block", "Staggered", "Adaptive"],
+    "CovPCA": ["IID", "Block", "Staggered", "Adaptive"],
+    "OLS_DID": ["Block", "Staggered"],
+    "SDID": ["Block", "Staggered"],
+    "SC": ["Block", "Staggered"],
+    "RSC": ["Block", "Staggered"],
 }
 
 
@@ -65,7 +65,7 @@ def _normalise_methods(
     if methods is None:
         return DEFAULT_METHODS
     if isinstance(methods, dict):
-        return methods
+        return {k: list(v) for k, v in methods.items()}
     return {m: list(patterns) for m in methods}
 
 
@@ -106,8 +106,7 @@ def run_experiment(
 
         - ``None`` (default) — all seven methods with their default valid
           patterns (same as ``analysis/semi_synthetic.py``):
-          DC_PR_auto_rank, MC_NNM_CV, CovariancePCA, DID, SDID, SC,
-          RobustSyntheticControl.
+          DCPR, MC_NNM_CV, CovPCA, OLS_DID, SDID, SC, RSC.
         - ``list[str]`` — run those methods against every pattern in
           ``patterns``.
         - ``dict[str, list[str]]`` — explicit mapping of method → valid

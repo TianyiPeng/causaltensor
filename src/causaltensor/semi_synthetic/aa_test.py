@@ -17,7 +17,7 @@ Quickstart
 >>> rng = np.random.default_rng(0)
 >>> O = rng.normal(100, 10, (20, 40))
 >>> Z = np.zeros((20, 40)); Z[0, 20:] = 1
->>> df = run_aa_test(O, Z, methods=["DID", "SDID"], n_trials=20)
+>>> df = run_aa_test(O, Z, methods=["OLS_DID", "SDID"], n_trials=20)
 >>> df.groupby(["method", "pattern"])["tau_hat"].describe()
 """
 
@@ -38,13 +38,13 @@ from causaltensor.utils.common import get_tau_from_method, treated_states_and_st
 VALID_PATTERNS: List[str] = ["IID", "Block", "Staggered", "Adaptive"]
 
 DEFAULT_METHODS: Dict[str, List[str]] = {
-    "DC_PR_auto_rank": ["IID", "Block", "Staggered", "Adaptive"],
-    "MC_NNM_CV":       ["IID", "Block", "Staggered", "Adaptive"],
-    "CovariancePCA":   ["IID", "Block", "Staggered", "Adaptive"],
-    "DID":             ["Block", "Staggered"],
-    "SDID":            ["Block", "Staggered"],
-    "SC":              ["Block", "Staggered"],
-    "RobustSyntheticControl": ["Block", "Staggered"],
+    "DCPR": ["IID", "Block", "Staggered", "Adaptive"],
+    "MC_NNM_CV": ["IID", "Block", "Staggered", "Adaptive"],
+    "CovPCA": ["IID", "Block", "Staggered", "Adaptive"],
+    "OLS_DID": ["Block", "Staggered"],
+    "SDID": ["Block", "Staggered"],
+    "SC": ["Block", "Staggered"],
+    "RSC": ["Block", "Staggered"],
 }
 
 

@@ -1,7 +1,7 @@
 """
 Real-dataset treatment-effect reports using the same estimators as
-``utils.common.get_fit_result_from_method`` (DC-PR, MC-NNM CV, Covariance PCA,
-DID, SDID, OLS-SC, Robust SC).
+``utils.common.get_fit_result_from_method`` (DCPR, MC-NNM CV, CovPCA,
+OLS_DID, SDID, SC, RSC).
 
 Only datasets that ship with a treatment matrix ``Z`` can produce a full report
 (classic case studies and PWT benchmarks). Large recommendation-style panels
@@ -29,6 +29,7 @@ import pandas as pd
 
 from causaltensor.datasets.dataset_loader import available_datasets, load_dataset
 from causaltensor.utils.common import (
+    CANONICAL_ESTIMATOR_METHODS,
     extract_treatment_info_from_Z,
     get_fit_result_from_method,
 )
@@ -41,13 +42,13 @@ if TYPE_CHECKING:
 
 # Match default methods in semi_synthetic / get_fit_result_from_method.
 DEFAULT_METHODS: Tuple[str, ...] = (
-    "DC_PR_auto_rank",
+    "DCPR",
     "MC_NNM_CV",
-    "CovariancePCA",
-    "DID",
+    "CovPCA",
+    "OLS_DID",
     "SDID",
     "SC",
-    "RobustSyntheticControl",
+    "RSC",
 )
 
 
@@ -321,7 +322,7 @@ def run_real_data_report(
     methods : sequence of str
         Estimator keys accepted by ``get_fit_result_from_method``. For dataset
         ``dunnhumby``, the list is filtered to methods valid for general /
-        Adaptive assignment (DC-PR, MC-NNM CV, Covariance PCA only).
+        Adaptive assignment (DCPR, MC-NNM CV, CovPCA only).
     datasets_path : str, optional
         ``datasets/raw`` directory; default is the package raw folder.
     counterfactual_output_dir : path-like, optional
@@ -344,7 +345,10 @@ def run_real_data_report(
         datasets_path = default_raw_datasets_path()
 
     if dataset_name.lower() == "dunnhumby":
-        methods = ["DC_PR_auto_rank", "MC_NNM_CV", "CovariancePCA"]
+        methods_seq = ["DCPR", "MC_NNM_CV", "CovPCA"]
+    else:
+        methods_seq = list(methods)
+    methods = tuple(dict.fromkeys(methods_seq))
 
     Y_df, Z_df, _X_df = load_dataset(dataset_name, datasets_path=datasets_path)
     O, Z = prepare_panel(Y_df, Z_df)
@@ -590,7 +594,7 @@ def main(argv: Optional[Sequence[str]] = None) -> pd.DataFrame:
         metavar="NAMES",
         help=(
             "Comma-separated estimator keys (default: full report set). "
-            "Example: --methods DC_PR_auto_rank,MC_NNM_CV,CovariancePCA"
+            "Example: --methods DCPR,MC_NNM_CV,CovPCA"
         ),
     )
     args = parser.parse_args(argv)
@@ -600,6 +604,10 @@ def main(argv: Optional[Sequence[str]] = None) -> pd.DataFrame:
         methods = _parse_methods_csv(args.methods)
         if not methods:
             parser.error("--methods must list at least one non-empty key.")
+        valid = set(CANONICAL_ESTIMATOR_METHODS)
+        bad = [m for m in methods if m not in valid]
+        if bad:
+            parser.error(f"Unknown method key(s): {bad}. Valid: {sorted(valid)}")
 
     plot_dir = None
     if args.plots:

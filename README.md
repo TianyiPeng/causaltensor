@@ -34,7 +34,7 @@ Optional dependencies: `cvxpy` (required for SDID), `pyreadr` (required for some
 
 ```python
 from causaltensor.datasets import load_dataset
-from causaltensor.cauest.DID import DIDPanelSolver
+from causaltensor.cauest import DIDPanelSolver
 
 ds = load_dataset("smoking")          # California Prop 99 panel
 O, Z = ds.O, ds.Z
@@ -53,13 +53,13 @@ All seven estimators share the same two-step API: construct with `(O, Z)`, call 
 
 | Estimator                 | Class                      | `estimate()` key         | Treatment patterns | Reference                                                                |
 | ------------------------- | -------------------------- | ------------------------ | ------------------ | ------------------------------------------------------------------------ |
-| Difference-in-Differences | `DIDPanelSolver`           | `DID`                    | Block, Staggered   | [Chamberlain 1982](http://web.mit.edu/insong/www/pdf/FEmatch-twoway.pdf) |
+| Difference-in-Differences | `DIDPanelSolver`           | `OLS_DID`                | Block, Staggered   | [Chamberlain 1982](http://web.mit.edu/insong/www/pdf/FEmatch-twoway.pdf) |
 | Synthetic Diff-in-Diffs   | `SDIDPanelSolver`          | `SDID`                   | Block, Staggered   | [Arkhangelsky et al. 2021](https://arxiv.org/pdf/1812.09970.pdf)         |
-| De-biased Convex PR       | `DCPanelSolver`            | `DC_PR_auto_rank`        | All                | [Farias, Li & Peng 2021](https://arxiv.org/abs/2106.02780)               |
+| De-biased Convex PR       | `DCPanelSolver`            | `DCPR`                   | All                | [Farias, Li & Peng 2021](https://arxiv.org/abs/2106.02780)               |
 | Matrix Completion NNM     | `MCNNMPanelSolver`         | `MC_NNM_CV`              | All                | [Athey et al. 2021](https://arxiv.org/abs/1710.10251)                    |
-| Covariance PCA            | `CovariancePCAPanelSolver` | `CovariancePCA`          | All                | [Xiong & Pelger 2019](https://arxiv.org/abs/1901.09056)                  |
+| Covariance PCA            | `CovariancePCAPanelSolver` | `CovPCA`                 | All                | [Xiong & Pelger 2019](https://arxiv.org/abs/1901.09056)                  |
 | OLS Synthetic Control     | `OLSSCPanelSolver`         | `SC`                     | Block, Staggered   | [Abadie & Gardeazabal 2003](http://www.jstor.org/stable/3132164)         |
-| Robust Synthetic Control  | `RSCPanelSolver`           | `RobustSyntheticControl` | Block, Staggered   | [Amjad et al. 2018](https://arxiv.org/abs/1811.07426)                    |
+| Robust Synthetic Control  | `RSCPanelSolver`           | `RSC`                    | Block, Staggered   | [Amjad et al. 2018](https://arxiv.org/abs/1811.07426)                    |
 
 
 ---
@@ -91,7 +91,7 @@ Inject synthetic treatment effects into the Basque dataset and benchmark all sev
 
 ### Interpreting results
 
-Understand what `solver.fit()` returns: how to read the ATT estimate, fitted counterfactual (`baseline`), fit diagnostics (`untreated_r2`, `control_rmse`, `pre_exposure_rmse`, `rmspe_ratio`), the `summary()` table, and `plot_actual_vs_counterfactual()`. Also covers estimator-specific internals (SDID donor/time weights, MC-NNM low-rank component, SC donor weights, DC-PR sandwich SE, CovariancePCA factor matrix).
+Understand what `solver.fit()` returns: how to read the ATT estimate, fitted counterfactual (`baseline`), fit diagnostics (`untreated_r2`, `control_rmse`, `pre_exposure_rmse`, `rmspe_ratio`), the `summary()` table, and `plot_actual_vs_counterfactual()`. Also covers estimator-specific internals (SDID donor/time weights, MC-NNM low-rank component, SC donor weights, DC-PR sandwich SE, CovPCA factor matrix).
 
 [Open in GitHub](https://github.com/TianyiPeng/causaltensor/blob/main/tutorials/guides/04_inspecting_results.ipynb)
 [Open In Colab](https://colab.research.google.com/github/TianyiPeng/causaltensor/blob/main/tutorials/guides/04_inspecting_results.ipynb)

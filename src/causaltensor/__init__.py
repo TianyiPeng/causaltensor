@@ -9,13 +9,13 @@ real
     Estimate treatment effects on observed panel data.
 
     >>> from causaltensor.real import estimate
-    >>> tau = estimate(O, Z, "DID")
+    >>> tau = estimate(O, Z, "OLS_DID")
 
 semi_synthetic
     Benchmark estimators on your own data with injected effects.
 
     >>> from causaltensor.semi_synthetic import run_experiment, run_aa_test
-    >>> df = run_experiment(O, Z, methods=["DID", "SDID"], treatment_levels=[0.1, 0.2])
+    >>> df = run_experiment(O, Z, methods=["OLS_DID", "SDID"], treatment_levels=[0.1, 0.2])
 
 synthetic
     Generate fully synthetic (N, T) panels for benchmarking and testing.

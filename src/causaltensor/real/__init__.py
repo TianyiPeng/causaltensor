@@ -12,15 +12,14 @@ Usage
 >>> Z = ...  # your binary treatment mask (n x T)
 
 # Single method -> returns a float
->>> tau = estimate(O, Z, "DID")
+>>> tau = estimate(O, Z, "OLS_DID")
 
 # Multiple methods -> returns {method: tau_hat}
->>> results = estimate(O, Z, ["DID", "SDID", "DC_PR_auto_rank"])
+>>> results = estimate(O, Z, ["OLS_DID", "SDID", "DCPR"])
 
 Available methods
 -----------------
-'DC_PR_auto_rank', 'MC_NNM_CV', 'CovariancePCA',
-'DID', 'SDID', 'SC', 'RobustSyntheticControl'
+'DCPR', 'MC_NNM_CV', 'CovPCA', 'OLS_DID', 'SDID', 'SC', 'RSC'
 """
 
 from causaltensor.real.estimate import VALID_METHODS, estimate

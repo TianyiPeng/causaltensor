@@ -44,13 +44,13 @@ DEFAULT_N: Tuple[int, ...] = (10, 50, 100, 500, 1000, 5000, 10000)
 DEFAULT_T: Tuple[int, ...] = (10, 50, 100, 500, 1000, 5000, 10000)
 
 DEFAULT_METHODS: Tuple[str, ...] = (
-    "DID",
+    "OLS_DID",
     "SDID",
-    "DC_PR_auto_rank",
+    "DCPR",
     "MC_NNM_CV",
     "SC",
-    "RobustSyntheticControl",
-    "CovariancePCA",
+    "RSC",
+    "CovPCA",
 )
 
 _RESULTS_DIR = Path(__file__).parent / "results" / "load_tests"

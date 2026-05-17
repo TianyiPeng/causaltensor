@@ -21,6 +21,17 @@ from causaltensor.cauest.RobustSyntheticControl import robust_synthetic_control
 from causaltensor.cauest.SDID import SDID, SDIDPanelSolver
 from causaltensor.cauest.result import Result
 
+# Estimator string keys for CSVs, plots, CLI, and :func:`~causaltensor.real.estimate.estimate`.
+CANONICAL_ESTIMATOR_METHODS: tuple[str, ...] = (
+    "DCPR",
+    "MC_NNM_CV",
+    "CovPCA",
+    "OLS_DID",
+    "SDID",
+    "SC",
+    "RSC",
+)
+
 
 def extract_treatment_info_from_Z(Y_df: pd.DataFrame, Z_df: pd.DataFrame | None):
     """
@@ -78,8 +89,7 @@ def get_tau_from_method_with_error(method_name: str, O_syn: np.ndarray, Z: np.nd
     Parameters
     ----------
     method_name : str
-        One of: 'DC_PR_auto_rank', 'MC_NNM_CV', 'CovariancePCA', 'DID',
-        'SDID', 'SC', 'RobustSyntheticControl'.
+        One of: ``DCPR``, ``MC_NNM_CV``, ``CovPCA``, ``OLS_DID``, ``SDID``, ``SC``, ``RSC``.
     O_syn : np.ndarray
         Observed panel (n × T).
     Z : np.ndarray
@@ -93,20 +103,20 @@ def get_tau_from_method_with_error(method_name: str, O_syn: np.ndarray, Z: np.nd
         Error message if estimation failed, else None.
     """
     try:
-        if method_name == 'DC_PR_auto_rank':
+        if method_name == "DCPR":
             _, tau_hat, _ = DC_PR_auto_rank(O_syn, Z)
         elif method_name == 'MC_NNM_CV':
             _, _, _, tau_hat = MC_NNM_with_cross_validation(O_syn, 1 - Z)
-        elif method_name == 'DID':
+        elif method_name == "OLS_DID":
             _, tau_hat = DID(O_syn, Z)
         elif method_name == 'SDID':
             tau_hat = SDID(O_syn, Z)
         elif method_name == 'SC':
             # Synthetic control expects transposed inputs
             _, tau_hat = ols_synthetic_control(O_syn, Z)
-        elif method_name == 'RobustSyntheticControl':
+        elif method_name == "RSC":
             _, tau_hat = robust_synthetic_control(O_syn, Z)
-        elif method_name == 'CovariancePCA':
+        elif method_name == "CovPCA":
             res = CovariancePCAPanelSolver(O_syn, Z).fit()
             tau_hat = res.tau
         else:
@@ -157,7 +167,7 @@ def get_fit_result_from_method(
     O = np.asarray(O, dtype=float)
     Z = np.asarray(Z, dtype=float)
     try:
-        if method_name == "DC_PR_auto_rank":
+        if method_name == "DCPR":
             res = DCPanelSolver(O, Z).fit(
                 spectrum_cut=0.002, method="convex", method_non_neg=None
             )
@@ -167,15 +177,15 @@ def get_fit_result_from_method(
             res = solver.solve_with_cross_validation(O, K=5, list_l=None)
             res.O = O
             res.Z = Z
-        elif method_name == "CovariancePCA":
+        elif method_name == "CovPCA":
             res = CovariancePCAPanelSolver(O, Z).fit()
-        elif method_name == "DID":
+        elif method_name == "OLS_DID":
             res = DIDPanelSolver(O, Z).fit()
         elif method_name == "SDID":
             res = SDIDPanelSolver(O, Z).fit()
         elif method_name == "SC":
             res = OLSSCPanelSolver(O, Z).fit()
-        elif method_name == "RobustSyntheticControl":
+        elif method_name == "RSC":
             Mhat, tau = robust_synthetic_control(O, Z)
             res = Result(baseline=Mhat, tau=tau, return_tau_scalar=True)
             res.O = O

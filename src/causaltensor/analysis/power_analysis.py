@@ -12,7 +12,7 @@ If you pass more than one ``--baseline``, filenames are prefixed (e.g.
 CLI
 ---
     python -m causaltensor.analysis.power_analysis basque
-    python -m causaltensor.analysis.power_analysis basque --methods DID SDID \\
+    python -m causaltensor.analysis.power_analysis basque --methods OLS_DID SDID \\
         --patterns Block Staggered
 """
 
@@ -269,7 +269,7 @@ def main(argv: Optional[Sequence[str]] = None) -> List[Dict[str, Any]]:
         metavar="METHOD",
         choices=_METHOD_KEYS,
         help=(
-            "Estimator keys to run (default: all). Example: --methods DID SDID SC"
+            "Estimator keys to run (default: all). Example: --methods OLS_DID SDID SC"
         ),
     )
     parser.add_argument(

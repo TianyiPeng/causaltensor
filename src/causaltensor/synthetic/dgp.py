@@ -8,7 +8,7 @@ Always returns a 3-tuple ``(O, Z, tau_true)``.
   over treatment levels internally::
 
       O, Z, _ = generate(N=30, T=50, treatment_pattern="Block", seed=0)
-      df = run_experiment(O, Z, methods=["DID"], treatment_levels=[0.1, 0.2])
+      df = run_experiment(O, Z, methods=["OLS_DID"], treatment_levels=[0.1, 0.2])
 
 - When ``treatment_level`` is set, the effect is injected into ``O`` and
   ``tau_true`` is the known ATT. Pass to ``estimate`` for ground-truth
@@ -109,13 +109,13 @@ def generate(
     Use with run_experiment (treatment injected later at multiple levels):
 
     >>> O, Z, _ = generate(30, 50, rank=3, treatment_pattern="Block", seed=0)
-    >>> df = run_experiment(O, Z, methods=["DID"], treatment_levels=[0.1, 0.2])
+    >>> df = run_experiment(O, Z, methods=["OLS_DID"], treatment_levels=[0.1, 0.2])
 
     Use with estimate (single known treatment level, compare to ground truth):
 
     >>> O, Z, tau_true = generate(30, 50, treatment_pattern="Block",
     ...                           treatment_level=0.2, seed=0)
-    >>> tau_hat = estimate(O, Z, "DID")
+    >>> tau_hat = estimate(O, Z, "OLS_DID")
     >>> print(f"true={tau_true:.4f}  hat={tau_hat:.4f}")
 
     Non-negative / count panel:

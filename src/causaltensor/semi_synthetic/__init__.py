@@ -15,7 +15,7 @@ Usage
 >>>
 >>> df = run_experiment(
 ...     O, Z,
-...     methods=["DID", "SDID", "DC_PR_auto_rank"],
+...     methods=["OLS_DID", "SDID", "DCPR"],
 ...     patterns=["Block", "Staggered"],
 ...     baseline_type="control",
 ...     treatment_levels=[0.2, 0.1],
