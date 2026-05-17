@@ -35,13 +35,34 @@ def Z_stagger(M, m1, min_start, rng=None):
         Z[i, j:] = 1
     return Z
 
-def Z_adaptive(M, lookback_a, duration_b):
+def Z_adaptive(
+    M,
+    lookback_a,
+    duration_b,
+    rng=None,
+    ap=0.9,
+    randomize_duration=True
+):
     """
     Adaptive rule (endogenous): for each unit i, scan time j.
     If M[i,j] is strictly the minimum over the previous 'a' periods
     AND there was no treatment in that lookback window,
-    then mark the NEXT 'b' periods as treated.
+    then mark the NEXT 'b' periods as treated (with stochastic rules).
+
+    Parameters
+    ----------
+    M : ndarray
+        Baseline panel (used only to evaluate the adaptive condition).
+    lookback_a : int
+        Length of the pre-window compared against M[i,j].
+    duration_b : int
+        Max length of a treatment episode; see ``randomize_duration``.
+    rng : numpy.random.Generator or compatible seed, optional
+        Required when ``adopt_prob < 1`` or ``randomize_duration`` is True.
     """
+
+    rng = np.random.default_rng(rng)
+
     n, T = M.shape
     Z = np.zeros((n, T), dtype=int)
     for i in range(n):
@@ -56,10 +77,15 @@ def Z_adaptive(M, lookback_a, duration_b):
                 if M[i, j] > M[i, j - k]:
                     ok = False; break
             if ok:
-                # treat NEXT b periods
-                end = min(T, j + duration_b + 1)
-                Z[i, j+1:end] = 1
-                j += lookback_a + duration_b
+                if ap < 1.0 and rng.random() >= ap:
+                    j += 1
+                    continue
+                b_eff = int(duration_b)
+                if randomize_duration:
+                    b_eff = int(rng.integers(1, int(duration_b) + 1))
+                end = min(T, j + b_eff + 1)
+                Z[i, j + 1 : end] = 1
+                j += lookback_a + b_eff
             else:
                 j += 1
     return Z

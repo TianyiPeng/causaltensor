@@ -154,7 +154,7 @@ def generate(
         elif treatment_pattern == "Staggered":
             Z = Z_stagger(M, m1=m1, min_start=m2, rng=rng)
         elif treatment_pattern == "Adaptive":
-            Z = Z_adaptive(M, lookback_a=lookback_a, duration_b=duration_b)
+            Z = Z_adaptive(M, lookback_a=lookback_a, duration_b=duration_b, rng=rng)
 
         # Guard: ensure at least one treated cell
         if Z.sum() == 0:

@@ -211,7 +211,7 @@ def run_experiment(
                 elif pattern_name == "Staggered":
                     Z_syn = Z_stagger(M, m1=m1, min_start=m2, rng=rng)
                 elif pattern_name == "Adaptive":
-                    Z_syn = Z_adaptive(M, lookback_a=lookback_a, duration_b=duration_b)
+                    Z_syn = Z_adaptive(M, lookback_a=lookback_a, duration_b=duration_b, rng=rng)
                 else:
                     raise ValueError(f"Unknown pattern: {pattern_name}")
 

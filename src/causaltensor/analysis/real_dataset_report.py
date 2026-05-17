@@ -11,7 +11,10 @@ strategy is in place.
 
 The CLI requires one dataset name and writes ``real_data_report_<dataset>.csv`` under
 ``results/real_data/<dataset>/`` (or ``<out-dir>/<dataset>/`` if ``--out-dir`` is set).
-Use ``--plots`` to also save counterfactual PNGs in the same folder.
+Use ``--plots`` to also save counterfactual PNGs in the same folder, plus a
+single overlay figure ``counterfactual_all_methods.png`` when at least one
+method produced a baseline. Pass ``--methods`` as a comma-separated list to
+subset estimators (see ``--help``).
 """
 
 from __future__ import annotations
@@ -19,7 +22,7 @@ from __future__ import annotations
 import argparse
 import logging
 from pathlib import Path
-from typing import List, Optional, Sequence, Tuple, Union
+from typing import TYPE_CHECKING, List, Optional, Sequence, Tuple, Union
 
 import numpy as np
 import pandas as pd
@@ -33,6 +36,9 @@ from causaltensor.utils.panel import default_raw_datasets_path, prepare_panel
 
 logger = logging.getLogger(__name__)
 
+if TYPE_CHECKING:
+    from causaltensor.cauest.result import Result
+
 # Match default methods in semi_synthetic / get_fit_result_from_method.
 DEFAULT_METHODS: Tuple[str, ...] = (
     "DC_PR_auto_rank",
@@ -44,7 +50,27 @@ DEFAULT_METHODS: Tuple[str, ...] = (
     "RobustSyntheticControl",
 )
 
+
+def _parse_methods_csv(s: str) -> Tuple[str, ...]:
+    """Parse ``--methods`` as comma-separated keys (whitespace trimmed)."""
+    return tuple(p.strip() for p in s.split(",") if p.strip())
+
+
 _DATASETS_WITHOUT_Z = frozenset({"retailrocket", "truus", "movielens"})
+
+# Distinct, moderately saturated colors for combined counterfactual (readable on white).
+_COMBINED_CF_LINE_COLORS: Tuple[str, ...] = (
+    "#1976d2",
+    "#d32f2f",
+    "#388e3c",
+    "#9a7209",
+    "#f57c00",
+    "#00838f",
+    "#5e35b1",
+    "#e64a19",
+    "#c2185b",
+    "#455a64",
+)
 
 
 def datasets_with_treatment_pattern() -> Tuple[str, ...]:
@@ -62,6 +88,216 @@ def _tau_to_report_scalar(tau: Union[float, np.ndarray]) -> float:
     if arr.size == 1:
         return float(arr[0])
     return float(np.nanmean(arr))
+
+
+def _counterfactual_row_from_result(
+    res: Optional["Result"],
+    unit: int,
+    *,
+    expected_T: int,
+) -> Optional[np.ndarray]:
+    """One unit's counterfactual path; uses ``baseline`` like :meth:`Result.plot_actual_vs_counterfactual`."""
+    if res is None or res.baseline is None:
+        return None
+    b = np.asarray(res.baseline, dtype=float)
+    if b.ndim != 2 or not (0 <= unit < b.shape[0]) or b.shape[1] != expected_T:
+        return None
+    return b[unit, :]
+
+
+def _x_axis_tick_indices(
+    T: int,
+    tick_text: Sequence[str],
+    *,
+    max_full_ticks: int = 35,
+    target_sparse_ticks: int = 12,
+) -> Tuple[np.ndarray, int]:
+    """Avoid cluttered x-axis on long panels (e.g. Dunnhumby with many weeks)."""
+    text = [str(v) for v in tick_text]
+    if len(text) != T:
+        text = [str(i) for i in range(T)]
+
+    if T <= max_full_ticks:
+        idx = np.arange(T, dtype=int)
+    else:
+        idx = np.unique(
+            np.round(np.linspace(0, T - 1, target_sparse_ticks)).astype(int)
+        )
+
+    idx = np.sort(np.unique(idx))
+    labels = [text[i] for i in idx]
+    long_label = max(len(s) for s in labels) if labels else 0
+    tickangle = -50 if (len(idx) > 12 or long_label > 12) else 0
+    return idx, tickangle
+
+
+def _combined_cf_marker_sizes(T: int) -> Tuple[int, int]:
+    """(actual, method) marker diameters — smaller when ``T`` is large to limit overlap."""
+    if T <= 35:
+        return 7, 6
+    if T <= 55:
+        return 6, 5
+    if T <= 80:
+        return 5, 4
+    if T <= 110:
+        return 4, 3
+    return 3, 2
+
+
+# Combined-figure styling (grey treatment band/line; vertical tick labels).
+_COMBINED_TREATMENT_SHADE = "rgba(120, 120, 120, 0.2)"
+_COMBINED_TREATMENT_SHADE_COL = "rgba(120, 120, 120, 0.25)"
+_COMBINED_TREATMENT_VLINE = "rgba(75, 75, 75, 0.9)"
+
+
+def _combined_counterfactual_figure(
+    O: np.ndarray,
+    Z: np.ndarray,
+    plot_unit: int,
+    unit_label: str,
+    time_labels: Sequence[str],
+    dataset_name: str,
+    method_results: Sequence[Tuple[str, Optional["Result"]]],
+):
+    """
+    Overlay actual outcome and per-method counterfactuals (dashed), similar to the
+    combined plot in ``tutorials/guides/01_real_observed_panels.ipynb``.
+    """
+    try:
+        import plotly.graph_objects as go
+    except ImportError:
+        raise ImportError(
+            "plotly is required for counterfactual plots. Install with: pip install plotly"
+        ) from None
+
+    O = np.asarray(O, dtype=float)
+    Z = np.asarray(Z, dtype=float)
+    n, T = O.shape
+    if not (0 <= plot_unit < n):
+        return None
+
+    mk_actual, mk_method = _combined_cf_marker_sizes(T)
+
+    x = list(range(T))
+    tick_text = [str(v) for v in time_labels]
+    actual = O[plot_unit, :]
+    z_unit = Z[plot_unit, :]
+
+    fig = go.Figure()
+
+    treated_idx = np.where(z_unit > 0)[0]
+    is_treated = len(treated_idx) > 0
+    is_monotone = is_treated and np.all(np.diff(z_unit.astype(float)) >= -1e-9)
+    x_tick_idx, _ = _x_axis_tick_indices(T, tick_text)
+    x_tickvals = x_tick_idx.tolist()
+    x_ticktext = [tick_text[i] for i in x_tick_idx]
+    x_tickangle = -90
+    max_lbl = max((len(s) for s in x_ticktext), default=0)
+    bottom_margin = int(120 + min(max_lbl * 6, 140))
+    if is_treated:
+        if is_monotone:
+            t0 = int(treated_idx[0])
+            fig.add_vrect(
+                x0=t0 - 0.5,
+                x1=T - 0.5,
+                fillcolor=_COMBINED_TREATMENT_SHADE,
+                layer="below",
+                line_width=0,
+            )
+            fig.add_vline(
+                x=t0,
+                line=dict(color=_COMBINED_TREATMENT_VLINE, width=2, dash="dash"),
+            )
+        else:
+            for t_idx in treated_idx:
+                fig.add_vrect(
+                    x0=t_idx - 0.5,
+                    x1=t_idx + 0.5,
+                    fillcolor=_COMBINED_TREATMENT_SHADE_COL,
+                    layer="below",
+                    line_width=0,
+                )
+
+    fig.add_trace(
+        go.Scatter(
+            x=x,
+            y=actual,
+            mode="lines+markers",
+            name="Actual",
+            line=dict(color="#000000", width=3),
+            marker=dict(size=mk_actual, color="#000000"),
+            hovertemplate="t=%{customdata}  actual=%{y:.4g}<extra></extra>",
+            customdata=tick_text,
+        )
+    )
+
+    palette = _COMBINED_CF_LINE_COLORS
+    cf_rows: List[np.ndarray] = []
+    n_cf_traces = 0
+    for i, (method, res) in enumerate(method_results):
+        cf = _counterfactual_row_from_result(res, plot_unit, expected_T=T)
+        if cf is None or not np.all(np.isfinite(cf)):
+            continue
+        cf_rows.append(cf)
+        color = palette[i % len(palette)]
+        fig.add_trace(
+            go.Scatter(
+                x=x,
+                y=cf,
+                mode="lines+markers",
+                name=method,
+                line=dict(color=color, width=2, dash="dash"),
+                marker=dict(size=mk_method, color=color),
+                opacity=1.0,
+                hovertemplate=(
+                    f"{method}  t=%{{customdata}}  counterfactual=%{{y:.4g}}<extra></extra>"
+                ),
+                customdata=tick_text,
+            )
+        )
+        n_cf_traces += 1
+
+    if n_cf_traces == 0:
+        return None
+
+    all_y = np.concatenate([actual.reshape(-1)] + [r.reshape(-1) for r in cf_rows])
+    finite = all_y[np.isfinite(all_y)]
+    if finite.size == 0:
+        y_min, y_max = -1.0, 1.0
+    else:
+        y_min = float(np.min(finite))
+        y_max = float(np.max(finite))
+    span = y_max - y_min
+    if span > 0:
+        y_pad = 0.05 * span
+    else:
+        y_pad = max(0.05 * max(abs(y_min), abs(y_max), 1.0), 1e-9)
+
+    title = f"Actual vs counterfactuals — {dataset_name} ({unit_label})"
+    fig.update_layout(
+        title=dict(text=title, x=0.5, xanchor="center", y=0.97),
+        xaxis=dict(
+            title="Time period",
+            tickvals=x_tickvals,
+            ticktext=x_ticktext,
+            tickangle=x_tickangle,
+            showgrid=True,
+            gridcolor="#eeeeee",
+        ),
+        yaxis=dict(
+            title="Outcome",
+            range=[y_min - y_pad, y_max + y_pad],
+            showgrid=True,
+            gridcolor="#eeeeee",
+        ),
+        height=500,
+        legend=dict(orientation="h", yanchor="top", y=-0.22, xanchor="center", x=0.5),
+        margin=dict(l=60, r=20, t=70, b=bottom_margin),
+        hovermode="x unified",
+        plot_bgcolor="white",
+        paper_bgcolor="white",
+    )
+    return fig
 
 
 def run_real_data_report(
@@ -87,14 +323,20 @@ def run_real_data_report(
     datasets_path : str, optional
         ``datasets/raw`` directory; default is the package raw folder.
     counterfactual_output_dir : path-like, optional
-        If set, write ``counterfactual_<method>.png`` here for each successful fit.
+        If set, write ``counterfactual_<method>.png`` here for each successful fit,
+        and ``counterfactual_all_methods.png`` when at least one method returns a
+        finite counterfactual baseline for the chosen unit.
     counterfactual_unit_row : int, optional
         Treated row index for plots (default: first treated row in ``Z``).
 
     Returns
     -------
     pd.DataFrame
-        Report columns plus, when PNGs are written, ``df.attrs["counterfactual_png_paths"]``.
+        One row per method with ``tau_hat``, ``treated_pre_exposure_rmse`` (RMSE of
+        ``O - baseline`` on strict pre-periods of ever-treated units), ``ok``, etc.
+        When PNGs are written, ``df.attrs["counterfactual_png_paths"]``
+        (per-method paths, including the combined figure last) and
+        ``df.attrs["combined_counterfactual_png_path"]`` when the overlay is saved.
     """
     if datasets_path is None:
         datasets_path = default_raw_datasets_path()
@@ -114,6 +356,7 @@ def run_real_data_report(
     n, T = O.shape
     rows: List[dict] = []
     cf_paths: list[Path] = []
+    combined_cf_path: Optional[Path] = None
     plot_out = Path(counterfactual_output_dir) if counterfactual_output_dir is not None else None
 
     plot_unit: Optional[int] = None
@@ -146,14 +389,17 @@ def run_real_data_report(
                     "n_treated_units": np.nan,
                     "method": method,
                     "tau_hat": np.nan,
+                    "treated_pre_exposure_rmse": np.nan,
                     "ok": False,
                     "error": "No treatment matrix Z for this dataset.",
                 }
             )
         return pd.DataFrame(rows)
 
+    method_results: List[Tuple[str, Optional["Result"]]] = []
     for method in methods:
         res, err = get_fit_result_from_method(method, O, Z)
+        method_results.append((method, res))
         tau_hat = _tau_to_report_scalar(res.tau) if res is not None else float("nan")
         ok = err is None and res is not None and np.isfinite(tau_hat)
         err_out = err if err is not None else ("" if ok else "non-finite tau_hat")
@@ -168,6 +414,7 @@ def run_real_data_report(
                 "treatment_start_col_indices": str(treat_start_years),
                 "method": method,
                 "tau_hat": tau_hat,
+                "treated_pre_exposure_rmse": res.treated_pre_exposure_rmse,
                 "ok": ok,
                 "error": err_out,
             }
@@ -193,9 +440,35 @@ def run_real_data_report(
             except Exception as exc:
                 logger.warning("Counterfactual plot failed for %s: %s", method, exc)
 
+    if (
+        plot_out is not None
+        and plot_unit is not None
+        and unit_label is not None
+        and time_labels is not None
+    ):
+        try:
+            fig_all = _combined_counterfactual_figure(
+                O,
+                Z,
+                plot_unit,
+                unit_label,
+                time_labels,
+                dataset_name,
+                method_results,
+            )
+            if fig_all is not None:
+                combined_cf_path = plot_out / "counterfactual_all_methods.png"
+                fig_all.write_image(str(combined_cf_path), scale=2)
+                logger.info("Wrote %s", combined_cf_path)
+                cf_paths.append(combined_cf_path)
+        except Exception as exc:
+            logger.warning("Combined counterfactual plot failed: %s", exc)
+
     df = pd.DataFrame(rows)
     if cf_paths:
         df.attrs["counterfactual_png_paths"] = cf_paths
+    if combined_cf_path is not None:
+        df.attrs["combined_counterfactual_png_path"] = combined_cf_path
     return df
 
 
@@ -205,10 +478,15 @@ def print_report_table(df: pd.DataFrame) -> None:
         print("(no results)")
         return
 
+    max_pre_w = len("pre_rmse_tr")
+    for v in df["treated_pre_exposure_rmse"]:
+        max_pre_w = max(max_pre_w, len(f"{float(v):.6g}"))
+
     col_widths = {
         "dataset": max(len("dataset"), df["dataset"].str.len().max()),
         "method":  max(len("method"),  df["method"].str.len().max()),
         "tau_hat": len("tau_hat"),
+        "pre_tr":  max_pre_w,
         "status":  len("status"),
     }
 
@@ -216,6 +494,7 @@ def print_report_table(df: pd.DataFrame) -> None:
         f"{'dataset':<{col_widths['dataset']}}  "
         f"{'method':<{col_widths['method']}}  "
         f"{'tau_hat':>{col_widths['tau_hat']}}  "
+        f"{'pre_rmse_tr':>{col_widths['pre_tr']}}  "
         f"{'status':<{col_widths['status']}}"
     )
     sep = "-" * len(header)
@@ -232,11 +511,14 @@ def print_report_table(df: pd.DataFrame) -> None:
             prev_dataset = r["dataset"]
         tau = r.get("tau_hat", np.nan)
         tau_s = f"{tau:.6g}" if pd.notna(tau) else "nan"
+        pre_tr = r.get("treated_pre_exposure_rmse", np.nan)
+        pre_s = f"{pre_tr:.6g}" if pd.notna(pre_tr) else "nan"
         status = "ok" if r.get("ok") else f"FAIL: {r.get('error', '')}"
         print(
             f"{r['dataset']:<{col_widths['dataset']}}  "
             f"{r['method']:<{col_widths['method']}}  "
             f"{tau_s:>{col_widths['tau_hat']}}  "
+            f"{pre_s:>{col_widths['pre_tr']}}  "
             f"{status:<{col_widths['status']}}"
         )
 
@@ -287,7 +569,8 @@ def main(argv: Optional[Sequence[str]] = None) -> pd.DataFrame:
         "--plots",
         action="store_true",
         help=(
-            "Save counterfactual PNGs in the same folder as the CSV for this dataset."
+            "Save counterfactual PNGs per method and a combined overlay "
+            "(counterfactual_all_methods.png) in the dataset output folder."
         ),
     )
     parser.add_argument(
@@ -296,7 +579,22 @@ def main(argv: Optional[Sequence[str]] = None) -> pd.DataFrame:
         default=None,
         help="Row index of treated unit to plot (default: first treated row).",
     )
+    parser.add_argument(
+        "--methods",
+        default=None,
+        metavar="NAMES",
+        help=(
+            "Comma-separated estimator keys (default: full report set). "
+            "Example: --methods DC_PR_auto_rank,MC_NNM_CV,CovariancePCA"
+        ),
+    )
     args = parser.parse_args(argv)
+
+    methods: Tuple[str, ...] = DEFAULT_METHODS
+    if args.methods is not None:
+        methods = _parse_methods_csv(args.methods)
+        if not methods:
+            parser.error("--methods must list at least one non-empty key.")
 
     plot_dir = None
     if args.plots:
@@ -308,6 +606,7 @@ def main(argv: Optional[Sequence[str]] = None) -> pd.DataFrame:
 
     df = run_real_data_report(
         dataset_name=args.dataset,
+        methods=methods,
         datasets_path=args.raw_path,
         counterfactual_output_dir=plot_dir,
         counterfactual_unit_row=args.plot_unit_row,
@@ -318,7 +617,17 @@ def main(argv: Optional[Sequence[str]] = None) -> pd.DataFrame:
 
     cf_paths = df.attrs.get("counterfactual_png_paths", [])
     if cf_paths:
-        print(f"Counterfactual figures ({len(cf_paths)}) under {cf_paths[0].parent}")
+        parent = cf_paths[0].parent
+        n_per_method = len(cf_paths)
+        if df.attrs.get("combined_counterfactual_png_path"):
+            n_per_method -= 1
+        print(
+            f"Counterfactual figures: {n_per_method} per-method PNG(s) "
+            f"and combined overlay under {parent}"
+        )
+        comb = df.attrs.get("combined_counterfactual_png_path")
+        if comb:
+            print(f"Combined: {comb}")
     return df
 
 
