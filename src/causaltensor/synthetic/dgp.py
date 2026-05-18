@@ -52,6 +52,8 @@ def generate(
     scale_M: float = 1.0,
     treatment_pattern: Optional[str] = "Block",
     treatment_level: Optional[float] = None,
+    sigma_unit_scale: float = 0.8,
+    sigma_time_scale: float = 0.2,
     seed: Optional[int] = None,
 ) -> Tuple[np.ndarray, np.ndarray, float]:
     """
@@ -90,6 +92,13 @@ def generate(
         When ``None`` (default), no effect is injected and ``tau_true`` is
         ``0.0``; ``O`` is baseline + noise only. The return type is always
         ``(O, Z, tau_true)``.
+    sigma_unit_scale : float, default 0.8
+        Unit heterogeneity scale passed to :func:`inject_treatment_centered`
+        (std.~dev.~of unit shocks is ``sigma_unit_scale * |tau*|``).
+        Ignored when ``treatment_level`` is ``None``.
+    sigma_time_scale : float, default 0.2
+        Time heterogeneity scale (std.~dev.~of time shocks is
+        ``sigma_time_scale * |tau*|``). Ignored when ``treatment_level`` is ``None``.
     seed : int or None, optional
         Random seed for full reproducibility.
 
@@ -168,7 +177,12 @@ def generate(
     if treatment_level is not None:
         # inject_treatment_centered works on M (noiseless), returns M + Tmat*Z
         M, tau_true = inject_treatment_centered(
-            M, Z, treatment_level=treatment_level, rng=rng
+            M,
+            Z,
+            treatment_level=treatment_level,
+            sigma_unit_scale=sigma_unit_scale,
+            sigma_time_scale=sigma_time_scale,
+            rng=rng,
         )
 
     # --- Add noise (always after treatment injection so rng state is consistent) ---

@@ -7,13 +7,16 @@ All outputs go under one folder per dataset:
     analysis/results/power_analysis/<dataset_name>/
 
 If you pass more than one ``--baseline``, filenames are prefixed (e.g.
-``control_null_trials.csv``) so nothing is overwritten.
+``control_<pattern>_null_trials.csv``) so nothing is overwritten.
+
+Each run uses a **single** synthetic assignment pattern (``--pattern``, default
+``Block``). Artifact names include that pattern, e.g. ``Block_null_trials.csv``.
 
 CLI
 ---
     python -m causaltensor.analysis.power_analysis basque
     python -m causaltensor.analysis.power_analysis basque --methods OLS_DID SDID \\
-        --patterns Block Staggered
+        --pattern Staggered
 """
 
 from __future__ import annotations
@@ -50,6 +53,12 @@ _RESULTS_SUBDIR = "power_analysis"
 _METHOD_KEYS: Tuple[str, ...] = tuple(DEFAULT_METHODS.keys())
 
 DEFAULT_RELATIVE_EFFECTS = tuple(float(x) for x in np.linspace(0.0, 0.2, 9))
+DEFAULT_PATTERN = "Block"
+
+
+def _pattern_artifact_prefix(pattern: str) -> str:
+    """Return a filename prefix (trailing underscore) for the synthetic pattern."""
+    return f"{str(pattern).replace(' ', '_')}_"
 
 
 def default_run_root(dataset_name: str) -> Path:
@@ -70,7 +79,7 @@ def run_power_analysis_for_baseline(
     output_dir: Path,
     file_prefix: str = "",
     methods: Optional[List[str]] = None,
-    patterns: Optional[List[str]] = None,
+    pattern: str = DEFAULT_PATTERN,
     n_trials_null: int = 40,
     n_trials_power: int = 120,
     relative_effects: Sequence[float] = DEFAULT_RELATIVE_EFFECTS,
@@ -85,11 +94,15 @@ def run_power_analysis_for_baseline(
 
     Parameters
     ----------
-    output_dir
+    output_dir : Path
         Directory for outputs (e.g. .../power_analysis/basque/).
-    file_prefix
+    file_prefix : str
         Optional stem prefix for files when multiple baselines share one folder
         (e.g. ``"control_"``). Empty for the usual single-baseline names.
+        The ``pattern`` slug is appended after this (e.g.
+        ``control_Block_null_trials.csv``).
+    pattern : str
+        Single synthetic treatment pattern (see :data:`VALID_PATTERNS`).
     seed_null, seed_power
         Seeds for ``run_aa_test`` and ``run_empirical_power_grid`` respectively.
     """
@@ -99,11 +112,17 @@ def run_power_analysis_for_baseline(
     if verbose:
         print(f"\n--- {dataset_name} | baseline={baseline_type} -> {output_dir} ---")
 
+    if pattern not in VALID_PATTERNS:
+        raise ValueError(
+            f"Unknown pattern {pattern!r}. Valid: {VALID_PATTERNS}"
+        )
+    patterns_one = [pattern]
+
     df_null = run_aa_test(
         O,
         Z,
         methods=methods,
-        patterns=patterns,
+        patterns=patterns_one,
         baseline_type=baseline_type,
         n_trials=n_trials_null,
         seed=seed_null,
@@ -116,12 +135,13 @@ def run_power_analysis_for_baseline(
     df_null = df_null.copy()
     df_null.insert(0, "dataset", dataset_name)
 
-    path_null = output_dir / f"{file_prefix}null_trials.csv"
+    stem = f"{file_prefix}{_pattern_artifact_prefix(pattern)}"
+    path_null = output_dir / f"{stem}null_trials.csv"
     df_null.to_csv(path_null, index=False)
     logger.info("Wrote %s", path_null)
 
     thr_df = empirical_critical_abs_tau(df_null, alpha=alpha)
-    path_thr = output_dir / f"{file_prefix}empirical_thresholds.csv"
+    path_thr = output_dir / f"{stem}empirical_thresholds.csv"
     thr_df.to_csv(path_thr, index=False)
     logger.info("Wrote %s", path_thr)
 
@@ -135,23 +155,23 @@ def run_power_analysis_for_baseline(
         n_trials_per_effect=n_trials_power,
         seed=seed_power,
         methods=methods,
-        patterns=patterns,
+        patterns=patterns_one,
         verbose=verbose,
     )
-    path_power = output_dir / f"{file_prefix}empirical_power.csv"
+    path_power = output_dir / f"{stem}empirical_power.csv"
     df_power.to_csv(path_power, index=False)
     logger.info("Wrote %s", path_power)
 
     fig_null, _ = plot_aa_null_figure(
         df_null, grid_points=max(128, min(512, 8 * n_trials_null))
     )
-    path_fig_null = output_dir / f"{file_prefix}null_tau_distribution.png"
+    path_fig_null = output_dir / f"{stem}null_tau_distribution.png"
     fig_null.savefig(path_fig_null, dpi=plot_dpi, bbox_inches="tight")
     plt.close(fig_null)
     logger.info("Wrote %s", path_fig_null)
 
     fig_p, _ = plot_empirical_power_figure(df_power)
-    path_fig_p = output_dir / f"{file_prefix}power_curves.png"
+    path_fig_p = output_dir / f"{stem}power_curves.png"
     fig_p.savefig(path_fig_p, dpi=plot_dpi, bbox_inches="tight")
     plt.close(fig_p)
     logger.info("Wrote %s", path_fig_p)
@@ -177,7 +197,7 @@ def run_power_analysis(
     baseline_types: Sequence[str] = _BASELINE_TYPES,
     root_out: Optional[Path] = None,
     methods: Optional[List[str]] = None,
-    patterns: Optional[List[str]] = None,
+    pattern: str = DEFAULT_PATTERN,
     n_trials_null: int = 40,
     n_trials_power: int = 120,
     relative_effects: Optional[Sequence[float]] = None,
@@ -193,7 +213,8 @@ def run_power_analysis(
 
         results/power_analysis/<dataset_name>/
 
-    With multiple baselines, filenames are prefixed so outputs do not overwrite.
+    Baseline type and synthetic ``pattern`` are both reflected in filenames so outputs
+    do not overwrite across runs.
     Returns one result dict per baseline (see ``run_power_analysis_for_baseline``).
     """
     if root_out is None:
@@ -244,7 +265,7 @@ def run_power_analysis(
                 output_dir=root_out,
                 file_prefix=prefix,
                 methods=methods,
-                patterns=patterns,
+                pattern=pattern,
                 n_trials_null=n_trials_null,
                 n_trials_power=n_trials_power,
                 relative_effects=rel,
@@ -294,14 +315,12 @@ def main(argv: Optional[Sequence[str]] = None) -> List[Dict[str, Any]]:
         ),
     )
     parser.add_argument(
-        "--patterns",
-        nargs="+",
-        default=None,
+        "--pattern",
+        default=DEFAULT_PATTERN,
         metavar="PATTERN",
         choices=list(VALID_PATTERNS),
         help=(
-            "Synthetic treatment assignment patterns (default: all). "
-            "Example: --patterns Block Staggered"
+            "Synthetic treatment assignment pattern (default: %(default)s). "
         ),
     )
     parser.add_argument(
@@ -362,7 +381,7 @@ def main(argv: Optional[Sequence[str]] = None) -> List[Dict[str, Any]]:
         baseline_types=args.baseline,
         root_out=root,
         methods=args.methods,
-        patterns=args.patterns,
+        pattern=args.pattern,
         n_trials_null=args.n_trials_null,
         n_trials_power=args.n_trials_power,
         relative_effects=rel,
