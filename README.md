@@ -57,7 +57,7 @@ All seven estimators share the same two-step API: construct with `(O, Z)`, call 
 | Synthetic Diff-in-Diffs   | `SDIDPanelSolver`          | `SDID`                   | Block, Staggered   | [Arkhangelsky et al. 2021](https://arxiv.org/pdf/1812.09970.pdf)         |
 | De-biased Convex PR       | `DCPanelSolver`            | `DCPR`                   | All                | [Farias, Li & Peng 2021](https://arxiv.org/abs/2106.02780)               |
 | Matrix Completion NNM     | `MCNNMPanelSolver`         | `MC_NNM_CV`              | All                | [Athey et al. 2021](https://arxiv.org/abs/1710.10251)                    |
-| Covariance PCA            | `CovariancePCAPanelSolver` | `CovPCA`                 | All                | [Xiong & Pelger 2019](https://arxiv.org/abs/1901.09056)                  |
+| Covariance PCA            | `CovariancePCAPanelSolver` | `CovPCA`                 | All                | [Xiong & Pelger 2019](https://arxiv.org/abs/1910.08273)                  |
 | OLS Synthetic Control     | `OLSSCPanelSolver`         | `SC`                     | Block, Staggered   | [Abadie & Gardeazabal 2003](http://www.jstor.org/stable/3132164)         |
 | Robust Synthetic Control  | `RSCPanelSolver`           | `RSC`                    | Block, Staggered   | [Amjad et al. 2018](https://arxiv.org/abs/1811.07426)                    |
 

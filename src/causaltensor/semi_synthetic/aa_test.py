@@ -37,6 +37,31 @@ from causaltensor.utils.common import get_tau_from_method, treated_states_and_st
 
 VALID_PATTERNS: List[str] = ["IID", "Block", "Staggered", "Adaptive"]
 
+# Saturated line colors for multi-method overlays (distinct on white backgrounds).
+_METHOD_LINE_COLORS: Tuple[str, ...] = (
+    "#00B0F6",
+    "#FF9900",
+    "#00BF7D",
+    "#E76BF3",
+    "#F8766D",
+    "#FFC107",
+    "#76D7EA",
+    "#D39200",
+)
+
+
+def _power_figure_style() -> None:
+    import matplotlib.pyplot as plt
+
+    plt.style.use("seaborn-v0_8-whitegrid")
+
+
+def method_line_colors(n_methods: int) -> List[str]:
+    """Return ``n_methods`` distinct line colors for power / null plots."""
+    n = max(int(n_methods), 1)
+    return [_METHOD_LINE_COLORS[i % len(_METHOD_LINE_COLORS)] for i in range(n)]
+
+
 DEFAULT_METHODS: Dict[str, List[str]] = {
     "DCPR": ["IID", "Block", "Staggered", "Adaptive"],
     "MC_NNM_CV": ["IID", "Block", "Staggered", "Adaptive"],
@@ -297,7 +322,7 @@ def plot_aa_null_figure(
     null_df: pd.DataFrame,
     *,
     grid_points: int = 256,
-    figsize: Tuple[float, float] = (12, 10),
+    figsize: Tuple[float, float] = (7.2, 3.6),
 ):
     """
     KDE (line only) of ``tau_hat`` under the null for each pattern (subplot) and
@@ -308,14 +333,14 @@ def plot_aa_null_figure(
     """
     import matplotlib.pyplot as plt
 
-    plt.style.use("seaborn-v0_8-whitegrid")
+    _power_figure_style()
     patterns = list(dict.fromkeys(null_df["pattern"].tolist()))
     methods = list(dict.fromkeys(null_df["method"].tolist()))
     n_p = len(patterns)
-    fig, axes = plt.subplots(
-        n_p, 1, figsize=(figsize[0], max(2.5, 2.8 * n_p)), squeeze=False
-    )
-    colors = plt.cm.tab10(np.linspace(0, 1, max(len(methods), 2)))
+    min_h_per_panel = 3.0
+    fig_h = max(figsize[1], min_h_per_panel * n_p)
+    fig, axes = plt.subplots(n_p, 1, figsize=(figsize[0], fig_h), squeeze=False)
+    colors = method_line_colors(len(methods))
     n_gp = max(32, int(grid_points))
 
     for ax, pat in zip(axes.flat, patterns):
@@ -323,7 +348,7 @@ def plot_aa_null_figure(
         all_tau = sub["tau_hat"].to_numpy(dtype=float)
         all_tau = all_tau[np.isfinite(all_tau)]
         if all_tau.size == 0:
-            ax.axvline(0.0, color="k", linestyle="--", linewidth=0.8)
+            ax.axvline(0.0, color="k", linestyle="--", linewidth=0.9)
             ax.set_title(f"Null distribution — pattern = {pat}")
             ax.set_xlabel(r"$\hat\tau$")
             ax.set_ylabel("density")
@@ -343,13 +368,13 @@ def plot_aa_null_figure(
                 y,
                 color=colors[k % len(colors)],
                 label=meth,
-                linewidth=1.6,
+                linewidth=2.0,
             )
-        ax.axvline(0.0, color="k", linestyle="--", linewidth=0.8)
+        ax.axvline(0.0, color="k", linestyle="--", linewidth=0.9)
         ax.set_title(f"Null distribution — pattern = {pat}")
         ax.set_xlabel(r"$\hat\tau$")
         ax.set_ylabel("density")
-        ax.legend(fontsize=7, loc="upper right")
+        ax.legend(fontsize=8, loc="upper right", framealpha=0.92)
 
     fig.suptitle(
         r"A/A: $\hat\tau$ when true effect is 0 (fixed $M$, random $Z_\mathrm{syn}$)",

@@ -24,6 +24,8 @@ from causaltensor.semi_synthetic.aa_test import (
     VALID_PATTERNS,
     _normalise_methods,
     draw_synthetic_z,
+    method_line_colors,
+    _power_figure_style,
 )
 from causaltensor.semi_synthetic.utils import build_baseline_M
 from causaltensor.utils.common import get_tau_from_method, treated_states_and_starts_from_Z
@@ -175,7 +177,7 @@ def run_empirical_power_grid(
 def plot_empirical_power_figure(
     power_df: pd.DataFrame,
     *,
-    figsize: Tuple[float, float] = (12, 10),
+    figsize: Tuple[float, float] = (7.2, 3.6),
 ):
     """
     Power vs ``relative_effect`` for each pattern (subplot), lines per method.
@@ -185,14 +187,14 @@ def plot_empirical_power_figure(
     """
     import matplotlib.pyplot as plt
 
-    plt.style.use("seaborn-v0_8-whitegrid")
+    _power_figure_style()
     patterns = list(dict.fromkeys(power_df["pattern"].tolist()))
     methods = list(dict.fromkeys(power_df["method"].tolist()))
     n_p = len(patterns)
-    fig, axes = plt.subplots(
-        n_p, 1, figsize=(figsize[0], max(2.5, 2.8 * n_p)), squeeze=False
-    )
-    colors = plt.cm.tab10(np.linspace(0, 1, max(len(methods), 2)))
+    min_h_per_panel = 3.0
+    fig_h = max(figsize[1], min_h_per_panel * n_p)
+    fig, axes = plt.subplots(n_p, 1, figsize=(figsize[0], fig_h), squeeze=False)
+    colors = method_line_colors(len(methods))
 
     for ax, pat in zip(axes.flat, patterns):
         sub = power_df[power_df["pattern"] == pat]
@@ -204,18 +206,19 @@ def plot_empirical_power_figure(
                 s2["relative_effect"],
                 s2["power"],
                 marker="o",
-                ms=3,
+                ms=4,
+                linewidth=1.85,
                 color=colors[k % len(colors)],
                 label=meth,
             )
         ax.set_ylim(-0.05, 1.05)
-        ax.axhline(0.8, color="gray", linestyle=":", linewidth=0.8)
+        ax.axhline(0.8, color="gray", linestyle=":", linewidth=0.9)
         ax.set_title(f"Empirical power — pattern = {pat}")
         ax.set_xlabel(
             r"relative effect $\delta$ (inject $\delta \cdot \mathrm{mean}(|M|)$ on treated cells)"
         )
         ax.set_ylabel("power")
-        ax.legend(fontsize=7, loc="lower right")
+        ax.legend(fontsize=8, loc="lower right", framealpha=0.92)
 
     fig.suptitle(
         r"Reject $H_0:\tau=0$ when $|\hat\tau|>c$; "
