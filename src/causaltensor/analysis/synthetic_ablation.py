@@ -21,7 +21,12 @@ import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
 
-from causaltensor.semi_synthetic.aa_test import DEFAULT_METHODS, VALID_PATTERNS
+from causaltensor.semi_synthetic.aa_test import (
+    DEFAULT_METHODS,
+    VALID_PATTERNS,
+    _power_figure_style,
+    method_line_colors,
+)
 from causaltensor.synthetic.dgp import generate
 from causaltensor.utils.common import get_tau_from_method
 
@@ -184,12 +189,14 @@ def plot_ablation_figure(df: pd.DataFrame) -> plt.Figure:
     if df.empty:
         raise ValueError("empty dataframe for plotting")
 
+    _power_figure_style()
+
     key_order = list(DEFAULT_METHODS.keys())
     order = sorted(
         df["method"].unique(),
         key=lambda m: key_order.index(m) if m in key_order else len(key_order),
     )
-    palette = plt.cm.tab10(np.linspace(0, 1, max(len(order), 1)))
+    colors = method_line_colors(len(order))
 
     # (axis_key, title line 1, x-axis label, grid)
     axes_config: List[Tuple[str, str, str, Tuple[Any, ...]]] = [
@@ -200,7 +207,6 @@ def plot_ablation_figure(df: pd.DataFrame) -> plt.Figure:
     ]
 
     fig, axes = plt.subplots(1, 4, figsize=(14, 4.25))
-    fig.subplots_adjust(bottom=0.24, top=0.82, wspace=0.35)
     for ax, (key, title, xlabel, grid) in zip(axes, axes_config):
         sub = df.loc[df["axis"] == key]
         agg = (
@@ -220,16 +226,15 @@ def plot_ablation_figure(df: pd.DataFrame) -> plt.Figure:
                 xs[idx],
                 ys[idx],
                 marker="o",
-                markersize=4,
-                linewidth=1.5,
+                ms=4,
+                linewidth=1.85,
                 label=method,
-                color=palette[i % len(palette)],
+                color=colors[i % len(colors)],
             )
         held = _held_defaults_caption(key)
         ax.set_title(f"{title}\n{held}", fontsize=9, linespacing=1.2)
         ax.set_xlabel(xlabel)
         ax.set_ylabel("Mean relative error")
-        ax.grid(True, alpha=0.3)
 
     handles, labels = axes[0].get_legend_handles_labels()
     if handles:
@@ -239,11 +244,12 @@ def plot_ablation_figure(df: pd.DataFrame) -> plt.Figure:
             loc="lower center",
             ncol=min(7, len(labels)),
             bbox_to_anchor=(0.5, -0.02),
-            frameon=False,
+            framealpha=0.92,
             fontsize=8,
         )
 
-    fig.suptitle("Synthetic DGP ablations", fontsize=12, y=0.98)
+    fig.suptitle("Synthetic DGP ablations", fontsize=11)
+    fig.tight_layout(rect=[0.0, 0.08, 1.0, 0.92])
     return fig
 
 

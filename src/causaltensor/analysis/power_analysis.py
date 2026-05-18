@@ -52,7 +52,7 @@ _RESULTS_SUBDIR = "power_analysis"
 # Estimator keys for ``--methods`` (same as semi-synthetic registry).
 _METHOD_KEYS: Tuple[str, ...] = tuple(DEFAULT_METHODS.keys())
 
-DEFAULT_RELATIVE_EFFECTS = tuple(float(x) for x in np.linspace(0.0, 0.2, 9))
+DEFAULT_RELATIVE_EFFECTS = tuple(float(x) for x in np.linspace(0.0, 0.08, 9))
 DEFAULT_PATTERN = "Block"
 
 
