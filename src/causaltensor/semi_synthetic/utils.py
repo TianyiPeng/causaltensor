@@ -64,8 +64,8 @@ def build_baseline_M(O, treated_states, treat_start_years, baseline_type='contro
 
 def inject_treatment_centered(M, Z, *,
                               treatment_level=0.2,
-                              sigma_unit_scale=1.0,
-                              sigma_time_scale=0.5,
+                              sigma_unit_scale=0.8,
+                              sigma_time_scale=0.2,
                               rng=None):
     """
     Inject treatment with unit- and time-heterogeneity, centered over treated cells:
