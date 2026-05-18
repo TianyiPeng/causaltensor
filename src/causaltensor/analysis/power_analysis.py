@@ -206,13 +206,32 @@ def run_power_analysis(
     Y_df, Z_df, _ = load_dataset(dataset_name, datasets_path=datasets_path)
     O, Z = prepare_panel(Y_df, Z_df)
 
-    if Z is None or not np.any(Z):
-        logger.warning("No treatment matrix Z for %s.", dataset_name)
+    if Z is None:
+        Z = np.zeros_like(O)
+
+
+    observed_treatment = bool(np.any(Z))
+    usable_baselines: List[str] = []
+    for b in baseline_types:
+        if b == "pre-treatment" and not observed_treatment:
+            logger.warning(
+                "Skipping baseline=%s for %s (requires treatment timing from a non-zero Z).",
+                b,
+                dataset_name,
+            )
+            continue
+        usable_baselines.append(b)
+
+    if not usable_baselines:
+        logger.warning(
+            "No runnable baselines for %s after filtering.",
+            dataset_name,
+        )
         return []
 
     results: List[Dict[str, Any]] = []
-    multi = len(baseline_types) > 1
-    for b_idx, baseline_type in enumerate(baseline_types):
+    multi = len(usable_baselines) > 1
+    for b_idx, baseline_type in enumerate(usable_baselines):
         prefix = (
             f"{baseline_type.replace('-', '_')}_" if multi else ""
         )
