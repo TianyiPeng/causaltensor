@@ -11,18 +11,12 @@ from typing import Dict, List, Sequence, Tuple, Union
 
 import numpy as np
 
-from causaltensor.utils.common import get_tau_from_method_with_error
-
-# Available estimator keys
-VALID_METHODS: Tuple[str, ...] = (
-    "DC_PR_auto_rank",
-    "MC_NNM_CV",
-    "CovariancePCA",
-    "DID",
-    "SDID",
-    "SC",
-    "RobustSyntheticControl",
+from causaltensor.utils.common import (
+    CANONICAL_ESTIMATOR_METHODS,
+    get_tau_from_method_with_error,
 )
+
+VALID_METHODS: Tuple[str, ...] = CANONICAL_ESTIMATOR_METHODS
 
 
 def _scalar(tau: Union[float, np.ndarray]) -> float:
@@ -53,8 +47,9 @@ def estimate(
     method : str or list of str
         Estimator name(s).  Valid choices::
 
-            'DC_PR_auto_rank', 'MC_NNM_CV', 'CovariancePCA',
-            'DID', 'SDID', 'SC', 'RobustSyntheticControl'
+            ``DCPR``, ``MC_NNM_CV``, ``CovPCA``, ``OLS_DID``, ``SDID``, ``SC``, ``RSC``
+
+        (same as :data:`~causaltensor.utils.common.CANONICAL_ESTIMATOR_METHODS`).
 
     verbose : bool, default True
         Print each estimator's result (or failure reason).
@@ -64,7 +59,7 @@ def estimate(
     float
         Estimated ATT when a single ``method`` string is passed.
     dict[str, float]
-        ``{method: tau_hat}`` mapping when a list of methods is passed.
+        ``{method: tau_hat}`` when a list of methods is passed (deduplicated order preserved).
 
     Examples
     --------
@@ -74,9 +69,9 @@ def estimate(
     >>> O = np.random.randn(20, 40)
     >>> Z = np.zeros((20, 40)); Z[0, 20:] = 1
 
-    >>> tau = estimate(O, Z, "DID")
+    >>> tau = estimate(O, Z, "OLS_DID")
 
-    >>> results = estimate(O, Z, ["DID", "SDID", "DC_PR_auto_rank"])
+    >>> results = estimate(O, Z, ["OLS_DID", "SDID", "DCPR"])
     """
     O = np.asarray(O, dtype=float)
     Z = np.asarray(Z, dtype=float)
@@ -87,13 +82,20 @@ def estimate(
         )
 
     single = isinstance(method, str)
-    methods: List[str] = [method] if single else list(method)
+    raw_methods: List[str] = [method] if single else list(method)
 
-    unknown = set(methods) - set(VALID_METHODS)
+    unknown = set(raw_methods) - set(VALID_METHODS)
     if unknown:
         raise ValueError(
             f"Unknown method(s): {unknown}.\nValid methods: {VALID_METHODS}"
         )
+
+    methods: List[str] = []
+    seen: set[str] = set()
+    for m in raw_methods:
+        if m not in seen:
+            seen.add(m)
+            methods.append(m)
 
     if verbose:
         print(f"Panel shape: {O.shape}")
@@ -109,4 +111,5 @@ def estimate(
             else:
                 print(f"  {m}: tau_hat = {tau_hat:.6g}")
 
-    return results[method] if single else results
+    return results[raw_methods[0]] if single else results
+

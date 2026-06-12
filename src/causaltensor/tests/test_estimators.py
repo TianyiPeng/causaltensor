@@ -46,7 +46,7 @@ class TestDID:
         assert M_hat.shape == O.shape
         assert np.isfinite(tau_hat)
         rel_err = abs(tau_hat - tau_true) / (abs(tau_true) + 1e-9)
-        assert rel_err < 0.05, f"DID relative error too large: {rel_err:.3f}"
+        assert rel_err < 0.05, f"OLS_DID relative error too large: {rel_err:.3f}"
 
 
 class TestSDID:

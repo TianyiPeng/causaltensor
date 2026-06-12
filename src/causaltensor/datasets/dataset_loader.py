@@ -187,6 +187,7 @@ def load_dataset(
         - basque: Basque Country GDP (1975)
         - german_reunification: West Germany reunification (1990)
         - texas: Texas prison reform (1993)
+        - pwt: PWT panel (1970-2000)
         - pwt_spain_eu: Spain joining EU (1986)
         - pwt_chile_trade: Chile trade liberalization (1976)
         - pwt_korea_democracy: Republic of Korea democratization (1988)
@@ -366,6 +367,31 @@ def _load_pwt_spain_eu_dataset(datasets_path: str) -> Tuple[pd.DataFrame, pd.Dat
         additional_cols={'rgdpe1970': 1970, 'rgdpe1980': 1980, 'rgdpe1985': 1985}
     )
     
+    return Y_df, Z_df, X_df
+
+
+def _load_pwt(datasets_path: str) -> Tuple[pd.DataFrame, pd.DataFrame, pd.DataFrame]:
+    """PWT panel; Z is all zeros (no intervention)."""
+    df = pd.read_csv(f'{datasets_path}PWT.csv')
+    df['openness'] = df['csh_x'] + df['csh_m']
+    df["rgdpe"] = np.log(df["rgdpe"])
+
+    df1 = df[(df['year'] >= 1970) & (df['year'] <= 2000)]
+    Y_df = create_y_dataframe(df1, index_col="country", column_col="year", value_col="rgdpe")
+    Z_df = pd.DataFrame(0, index=Y_df.index, columns=Y_df.columns)
+
+    cols_to_avg = ["hc", "csh_i", "csh_c", "csh_g", "openness", "pl_gdpo", "pop"]
+
+    X_df = create_x_dataframe(
+        df1, Y_df,
+        index_col='country',
+        time_col='year',
+        covariate_cols=cols_to_avg,
+        avg_start_year=1970,
+        avg_end_year=1980,
+        additional_cols={'rgdpe1970': 1970, 'rgdpe1980': 1980, 'rgdpe1985': 1985}
+    )
+
     return Y_df, Z_df, X_df
 
 
@@ -596,6 +622,7 @@ DATASET_BUILDERS: Dict[str, Callable[[str], Tuple[pd.DataFrame, Optional[pd.Data
     "basque": _load_basque_dataset,
     "german_reunification": _load_german_reunification_dataset,
     "texas": _load_texas_dataset,
+    "pwt": _load_pwt,
     "pwt_spain_eu": _load_pwt_spain_eu_dataset,
     "pwt_chile_trade": _load_pwt_chile_trade_dataset,
     "pwt_korea_democracy": _load_pwt_korea_democracy_dataset,

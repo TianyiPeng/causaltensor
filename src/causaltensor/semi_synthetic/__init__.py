@@ -15,7 +15,7 @@ Usage
 >>>
 >>> df = run_experiment(
 ...     O, Z,
-...     methods=["DID", "SDID", "DC_PR_auto_rank"],
+...     methods=["OLS_DID", "SDID", "DCPR"],
 ...     patterns=["Block", "Staggered"],
 ...     baseline_type="control",
 ...     treatment_levels=[0.2, 0.1],
@@ -24,7 +24,19 @@ Usage
 >>> df.groupby(["method", "pattern"])["error"].mean()
 """
 
+from causaltensor.semi_synthetic.aa_test import plot_aa_null_figure, run_aa_test
+from causaltensor.semi_synthetic.empirical_power import (
+    empirical_critical_abs_tau,
+    plot_empirical_power_figure,
+    run_empirical_power_grid,
+)
 from causaltensor.semi_synthetic.experiment import run_experiment
-from causaltensor.semi_synthetic.aa_test import run_aa_test
 
-__all__ = ["run_experiment", "run_aa_test"]
+__all__ = [
+    "run_experiment",
+    "run_aa_test",
+    "plot_aa_null_figure",
+    "empirical_critical_abs_tau",
+    "run_empirical_power_grid",
+    "plot_empirical_power_figure",
+]

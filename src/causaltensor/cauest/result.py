@@ -25,11 +25,13 @@ class Result:
         self.O = None
         self.Z = None
         if return_tau_scalar:
-            self.tau = tau[0]
+            # tau may be 0-d (numpy scalar); tau[0] raises "invalid index to scalar variable".
+            if tau is not None:
+                self.tau = float(np.asarray(tau).ravel()[0])
             if self.covariance_tau is not None:
-                self.covariance_tau = covariance_tau[0, 0]
+                self.covariance_tau = float(np.asarray(self.covariance_tau).ravel()[0])
             if self.std_tau is not None:
-                self.std_tau = std_tau[0]
+                self.std_tau = float(np.asarray(self.std_tau).ravel()[0])
 
     # ------------------------------------------------------------------ #
     #  Core derived arrays                                                 #
@@ -96,7 +98,7 @@ class Result:
 
         Covers both pure control units and pre-treatment cells of treated units.
         Accessible on the result object; use control_rmse / pre_exposure_rmse
-        for a more informative decomposition.
+        / treated_pre_exposure_rmse for a more informative decomposition.
         """
         if self.O is None or self.baseline is None or self.Z is None:
             return None
@@ -143,18 +145,20 @@ class Result:
             return None
         return float(1.0 - np.sum(r ** 2) / ss_tot)
 
-    def _pre_exposure_info(self):
-        """Return (rmse, n_cells) for pre-exposure periods across ALL units, or (None, 0).
+    def _pre_exposure_rmse_stats(self, *, pooled: bool):
+        """RMSE and cell count on pre-exposure mask; shared by properties and summary().
 
-        Pre-exposure is defined per unit as all periods strictly before that
-        unit's first treated period:
+        If ``pooled`` is True, never-treated rows contribute all ``T`` periods;
+        if False, only strict pre-periods of ever-treated rows (donors excluded).
 
-        - Treated units: periods 0 .. t_i - 1  (standard pre-treatment window)
-        - Control units (never treated): all T periods (always "pre-exposure")
+        Pre-exposure for a treated row is ``0 .. t0-1`` where ``t0`` is the first
+        period with ``Z>0``. For non-monotone ``Z``, only the window before the
+        *first* episode counts; see :attr:`untreated_r2` for a fuller picture.
 
-        For non-monotone patterns (IID, adaptive) this only captures the period
-        before the *first* treatment episode per unit; later gaps between episodes
-        are not included.  Use untreated_r2 for a fuller picture in those cases.
+        Returns
+        -------
+        rmse : float or None
+        n_cells : int
         """
         if self.O is None or self.baseline is None or self.Z is None:
             return None, 0
@@ -167,8 +171,8 @@ class Result:
         for i in range(Z2d.shape[0]):
             treated_cols = np.where(Z2d[i] > 0)[0]
             if len(treated_cols) == 0:
-                # Control unit: all periods are pre-exposure.
-                pre_mask[i, :] = True
+                if pooled:
+                    pre_mask[i, :] = True
             else:
                 t0 = int(treated_cols[0])
                 if t0 > 0:
@@ -181,22 +185,40 @@ class Result:
 
     @property
     def pre_exposure_rmse(self):
-        """RMSE on pre-treatment periods for each treated unit.
+        """RMSE on the pooled pre-exposure set (treated pre-periods + all donor rows).
 
-        See _pre_exposure_info() for details on how pre-exposure is defined
-        and its limitations for non-monotone (IID/adaptive) patterns.
+        Pools never-treated units (all ``T`` periods) with strict pre-periods
+        of ever-treated units.  Informative for overall in-sample fit on
+        ``pseudo-pre`` observations; for fit on **treated units only** before
+        their first treatment, see :attr:`treated_pre_exposure_rmse`.
+
+        For non-monotone (IID/adaptive) patterns, only the window before the first
+        treated episode per unit is used.
         """
-        rmse, _ = self._pre_exposure_info()
+        rmse, _ = self._pre_exposure_rmse_stats(pooled=True)
+        return rmse
+
+    @property
+    def treated_pre_exposure_rmse(self):
+        """RMSE on strict pre-periods for **ever-treated** units only (donors excluded).
+
+        Same first-treated-time convention as :attr:`pre_exposure_rmse`, but
+        the average is taken only over cells that belong to units with
+        ``Z>0`` somewhere.  ``None`` when every unit is never-treated, or every
+        treated unit starts at ``t=0``, or data are unavailable.
+        """
+        rmse, _ = self._pre_exposure_rmse_stats(pooled=False)
         return rmse
 
     @property
     def rmspe_ratio(self):
-        """Signal-to-noise ratio: |ATT| / pre_exposure_rmse.
+        """Signal-to-noise ratio: |ATT| / :attr:`treated_pre_exposure_rmse`.
 
-        A ratio >> 1 indicates the estimated effect is large relative to the
-        model's pre-treatment fit error.
+        Uses pre-period fit error on **ever-treated units only** (donor rows
+        excluded).  ``None`` when :attr:`treated_pre_exposure_rmse` is missing
+        or zero.
         """
-        pre = self.pre_exposure_rmse
+        pre = self.treated_pre_exposure_rmse
         if pre is None or pre == 0:
             return None
         tau_scalar = float(np.mean(self.tau)) if np.ndim(self.tau) > 0 else float(self.tau)
@@ -286,10 +308,10 @@ class Result:
         else:
             lines.append(f"  {'Control RMSE':<26s}: N/A  (no pure control units)")
 
-        pre_rmse, pre_n = self._pre_exposure_info()
+        pre_rmse, pre_n = self._pre_exposure_rmse_stats(pooled=True)
         if pre_rmse is not None:
             lines.append(
-                f"  {'Pre-exposure RMSE':<26s}: {_fmt(pre_rmse)}  ({pre_n} cells)"
+                f"  {'Pre-exp. RMSE (pooled)':<26s}: {_fmt(pre_rmse)}  ({pre_n} cells)"
             )
             if self.z_pattern == "non-monotone":
                 lines.append(
@@ -299,7 +321,15 @@ class Result:
                     f"  {'':26s}  prefer Untreated R2 for full picture"
                 )
         else:
-            lines.append(f"  {'Pre-exposure RMSE':<26s}: N/A")
+            lines.append(f"  {'Pre-exp. RMSE (pooled)':<26s}: N/A")
+
+        tr_pre, tr_n = self._pre_exposure_rmse_stats(pooled=False)
+        if tr_pre is not None:
+            lines.append(
+                f"  {'Pre-exp. RMSE (treated)':<26s}: {_fmt(tr_pre)}  ({tr_n} cells)"
+            )
+        else:
+            lines.append(f"  {'Pre-exp. RMSE (treated)':<26s}: N/A")
 
         lines.append(f"  {'RMSPE ratio':<26s}: {_fmt(self.rmspe_ratio, prec=4)}")
 
@@ -336,8 +366,9 @@ class Result:
         to the end of the panel; for non-monotone patterns each treated period
         gets its own highlighted column.
 
-        An annotation box shows the unit-specific ATT, pre-treatment RMSE,
-        overall panel ATT, and Std(tau) where available.
+        An annotation box shows the unit-specific ATT, panel-level pre-exposure
+        RMSE on **ever-treated** units, overall
+        panel ATT, and Std(tau) where available.
 
         Parameters
         ----------
@@ -465,8 +496,11 @@ class Result:
         ann_parts = []
         if unit_att is not None:
             ann_parts.append(f"<b>Unit ATT:</b>  {unit_att:.4g}")
-        if unit_pre_rmse is not None:
-            ann_parts.append(f"<b>Pre-RMSE:</b>  {unit_pre_rmse:.4g}")
+        panel_treated_pre = self.treated_pre_exposure_rmse
+        if panel_treated_pre is not None:
+            ann_parts.append(f"<b>Pre-RMSE (treated):</b>  {panel_treated_pre:.4g}")
+        elif unit_pre_rmse is not None:
+            ann_parts.append(f"<b>Pre-RMSE (unit):</b>  {unit_pre_rmse:.4g}")
         if self.tau is not None:
             t_val = float(np.mean(self.tau)) if np.ndim(self.tau) > 0 else float(self.tau)
             ann_parts.append(f"<b>Overall ATT:</b> {t_val:.4g}")

@@ -156,7 +156,7 @@ cython_debug/
 # Sphinx build output
 docs/tmp/
 
-# Analysis result outputs
+# Generated analysis artifacts (run the analysis runner to reproduce)
 src/causaltensor/analysis/results/
 
 # OS files

@@ -8,7 +8,7 @@ Always returns a 3-tuple ``(O, Z, tau_true)``.
   over treatment levels internally::
 
       O, Z, _ = generate(N=30, T=50, treatment_pattern="Block", seed=0)
-      df = run_experiment(O, Z, methods=["DID"], treatment_levels=[0.1, 0.2])
+      df = run_experiment(O, Z, methods=["OLS_DID"], treatment_levels=[0.1, 0.2])
 
 - When ``treatment_level`` is set, the effect is injected into ``O`` and
   ``tau_true`` is the known ATT. Pass to ``estimate`` for ground-truth
@@ -52,6 +52,8 @@ def generate(
     scale_M: float = 1.0,
     treatment_pattern: Optional[str] = "Block",
     treatment_level: Optional[float] = None,
+    sigma_unit_scale: float = 0.8,
+    sigma_time_scale: float = 0.2,
     seed: Optional[int] = None,
 ) -> Tuple[np.ndarray, np.ndarray, float]:
     """
@@ -90,6 +92,13 @@ def generate(
         When ``None`` (default), no effect is injected and ``tau_true`` is
         ``0.0``; ``O`` is baseline + noise only. The return type is always
         ``(O, Z, tau_true)``.
+    sigma_unit_scale : float, default 0.8
+        Unit heterogeneity scale passed to :func:`inject_treatment_centered`
+        (std.~dev.~of unit shocks is ``sigma_unit_scale * |tau*|``).
+        Ignored when ``treatment_level`` is ``None``.
+    sigma_time_scale : float, default 0.2
+        Time heterogeneity scale (std.~dev.~of time shocks is
+        ``sigma_time_scale * |tau*|``). Ignored when ``treatment_level`` is ``None``.
     seed : int or None, optional
         Random seed for full reproducibility.
 
@@ -109,13 +118,13 @@ def generate(
     Use with run_experiment (treatment injected later at multiple levels):
 
     >>> O, Z, _ = generate(30, 50, rank=3, treatment_pattern="Block", seed=0)
-    >>> df = run_experiment(O, Z, methods=["DID"], treatment_levels=[0.1, 0.2])
+    >>> df = run_experiment(O, Z, methods=["OLS_DID"], treatment_levels=[0.1, 0.2])
 
     Use with estimate (single known treatment level, compare to ground truth):
 
     >>> O, Z, tau_true = generate(30, 50, treatment_pattern="Block",
     ...                           treatment_level=0.2, seed=0)
-    >>> tau_hat = estimate(O, Z, "DID")
+    >>> tau_hat = estimate(O, Z, "OLS_DID")
     >>> print(f"true={tau_true:.4f}  hat={tau_hat:.4f}")
 
     Non-negative / count panel:
@@ -154,7 +163,7 @@ def generate(
         elif treatment_pattern == "Staggered":
             Z = Z_stagger(M, m1=m1, min_start=m2, rng=rng)
         elif treatment_pattern == "Adaptive":
-            Z = Z_adaptive(M, lookback_a=lookback_a, duration_b=duration_b)
+            Z = Z_adaptive(M, lookback_a=lookback_a, duration_b=duration_b, rng=rng)
 
         # Guard: ensure at least one treated cell
         if Z.sum() == 0:
@@ -168,7 +177,12 @@ def generate(
     if treatment_level is not None:
         # inject_treatment_centered works on M (noiseless), returns M + Tmat*Z
         M, tau_true = inject_treatment_centered(
-            M, Z, treatment_level=treatment_level, rng=rng
+            M,
+            Z,
+            treatment_level=treatment_level,
+            sigma_unit_scale=sigma_unit_scale,
+            sigma_time_scale=sigma_time_scale,
+            rng=rng,
         )
 
     # --- Add noise (always after treatment injection so rng state is consistent) ---

@@ -1,12 +1,14 @@
 """
 User-facing A/A test runner.
 
-An A/A test verifies that an estimator returns ~0 when there is no true
-treatment effect.  Pass your own panel ``O`` and treatment mask ``Z``; the
-function carves out a "clean" baseline window (control units or pre-treatment
-period), repeatedly assigns *random* synthetic treatment patterns within it,
-runs each estimator on the untouched baseline, and reports how often the
-estimated effect is non-negligible (false-positive rate).
+An A/A test checks estimators on a **fixed baseline** panel ``M`` (true effect zero),
+with **independent random synthetic** treatment masks ``Z_syn`` each trial — Monte
+Carlo variation comes from assignment geometry, not from many field experiments.
+
+Use :func:`plot_aa_null_figure` (this module) for the null KDE figure, and
+:func:`run_empirical_power_grid` / :func:`plot_empirical_power_figure` in
+``causaltensor.semi_synthetic.empirical_power`` for empirical critical values
+and power curves (TestOps-style workflow without ad-hoc |τ|/std(M) cutoffs).
 
 Quickstart
 ----------
@@ -15,13 +17,13 @@ Quickstart
 >>> rng = np.random.default_rng(0)
 >>> O = rng.normal(100, 10, (20, 40))
 >>> Z = np.zeros((20, 40)); Z[0, 20:] = 1
->>> df = run_aa_test(O, Z, methods=["DID", "SDID"], n_trials=20)
->>> df.groupby(["method", "pattern"])["is_false_positive"].mean()
+>>> df = run_aa_test(O, Z, methods=["OLS_DID", "SDID"], n_trials=20)
+>>> df.groupby(["method", "pattern"])["tau_hat"].describe()
 """
 
 from __future__ import annotations
 
-from typing import Dict, List, Optional
+from typing import Dict, List, Optional, Tuple
 
 import numpy as np
 import pandas as pd
@@ -35,14 +37,39 @@ from causaltensor.utils.common import get_tau_from_method, treated_states_and_st
 
 VALID_PATTERNS: List[str] = ["IID", "Block", "Staggered", "Adaptive"]
 
+# Saturated line colors for multi-method overlays (distinct on white backgrounds).
+_METHOD_LINE_COLORS: Tuple[str, ...] = (
+    "#00B0F6",
+    "#FF9900",
+    "#00BF7D",
+    "#E76BF3",
+    "#F8766D",
+    "#FFC107",
+    "#76D7EA",
+    "#D39200",
+)
+
+
+def _power_figure_style() -> None:
+    import matplotlib.pyplot as plt
+
+    plt.style.use("seaborn-v0_8-whitegrid")
+
+
+def method_line_colors(n_methods: int) -> List[str]:
+    """Return ``n_methods`` distinct line colors for power / null plots."""
+    n = max(int(n_methods), 1)
+    return [_METHOD_LINE_COLORS[i % len(_METHOD_LINE_COLORS)] for i in range(n)]
+
+
 DEFAULT_METHODS: Dict[str, List[str]] = {
-    "DC_PR_auto_rank": ["IID", "Block", "Staggered", "Adaptive"],
-    "MC_NNM_CV":       ["IID", "Block", "Staggered", "Adaptive"],
-    "CovariancePCA":   ["IID", "Block", "Staggered", "Adaptive"],
-    "DID":             ["Block", "Staggered"],
-    "SDID":            ["Block", "Staggered"],
-    "SC":              ["Block"],
-    "RobustSyntheticControl": ["Block"],
+    "DCPR": ["IID", "Block", "Staggered", "Adaptive"],
+    "MC_NNM_CV": ["IID", "Block", "Staggered", "Adaptive"],
+    "CovPCA": ["IID", "Block", "Staggered", "Adaptive"],
+    "OLS_DID": ["Block", "Staggered"],
+    "SDID": ["Block", "Staggered"],
+    "SC": ["Block", "Staggered"],
+    "RSC": ["Block", "Staggered"],
 }
 
 
@@ -55,6 +82,35 @@ def _normalise_methods(
     return {m: list(patterns) for m in methods}
 
 
+def draw_synthetic_z(
+    M: np.ndarray,
+    pattern_name: str,
+    rng: np.random.Generator,
+) -> np.ndarray:
+    """
+    Draw one random binary treatment mask on the baseline ``M`` (same logic as ``run_aa_test``).
+    """
+    M = np.asarray(M, dtype=float)
+    n, T = M.shape
+    m1, m2, lookback_a, duration_b = sample_treatment_parameters(n, T, rng)
+
+    if pattern_name == "IID":
+        Z_syn = Z_iid(M, p_treat=0.2, rng=rng)
+    elif pattern_name == "Block":
+        Z_syn = Z_block(M, m1=m1, m2=m2, rng=rng)
+    elif pattern_name == "Staggered":
+        Z_syn = Z_stagger(M, m1=m1, min_start=m2, rng=rng)
+    elif pattern_name == "Adaptive":
+        Z_syn = Z_adaptive(M, lookback_a=lookback_a, duration_b=duration_b, rng=rng)
+    else:
+        raise ValueError(f"Unknown pattern: {pattern_name}")
+
+    if Z_syn.sum() == 0:
+        i = int(rng.integers(0, n))
+        Z_syn[i, int(rng.integers(0, max(T, 1)))] = 1
+    return Z_syn
+
+
 def run_aa_test(
     O: np.ndarray,
     Z: np.ndarray,
@@ -63,15 +119,14 @@ def run_aa_test(
     baseline_type: str = "control",
     n_trials: int = 10,
     seed: int = 0,
-    fpr_threshold: float = 0.05,
     verbose: bool = True,
 ) -> pd.DataFrame:
     """
     Run an A/A test on observed panel data.
 
     Builds a clean baseline ``M`` where the true treatment effect is zero,
-    then repeatedly assigns random synthetic treatment masks and checks
-    whether each estimator falsely detects a non-zero effect.
+    then repeatedly draws random synthetic ``Z_syn`` and records ``tau_hat``
+    from each estimator (no treatment injected into ``M``).
 
     Parameters
     ----------
@@ -95,9 +150,6 @@ def run_aa_test(
         combination.
     seed : int, default 0
         Base random seed. Each ``(pattern, trial)`` uses a distinct derived seed.
-    fpr_threshold : float, default 0.05
-        A trial is a *false positive* when
-        ``|tau_hat| / std(M) > fpr_threshold``.
     verbose : bool, default True
         Print progress and per-trial results.
 
@@ -106,16 +158,10 @@ def run_aa_test(
     pd.DataFrame
         One row per ``(method, pattern, trial)`` with columns:
 
-        ================== ================================================
-        method             estimator name
-        pattern            synthetic treatment pattern used in this trial
-        baseline_type      'control' or 'pre-treatment'
-        trial              0-based trial index
-        tau_hat            estimated effect (NaN if estimator failed)
-        std_M              std(M) — used to scale tau_hat
-        relative_tau       ``|tau_hat| / std(M)`` (NaN on failure)
-        is_false_positive  True when ``relative_tau > fpr_threshold``
-        ================== ================================================
+        method, pattern, baseline_type, trial, tau_hat, std_M
+
+        ``std_M`` is ``std(M)`` of the baseline (same for all rows in a run);
+        useful as a scale reference, not as a formal test statistic.
     """
     O = np.asarray(O, dtype=float)
     Z = np.asarray(Z, dtype=float)
@@ -138,7 +184,6 @@ def run_aa_test(
         print(f"Data shape: {O.shape}")
         print(f"Treated states: {treated_states}, Treatment start years: {treat_start_years}")
 
-    # Build clean baseline M (true tau = 0 within this window)
     M, n, T = build_baseline_M(O, treated_states, treat_start_years, baseline_type)
 
     std_M = float(np.std(M)) if np.std(M) > 0 else 1.0
@@ -158,56 +203,31 @@ def run_aa_test(
                 np.random.SeedSequence([seed, p_idx, trial])
             )
 
-            m1, m2, lookback_a, duration_b = sample_treatment_parameters(n, T, rng)
-
-            if pattern_name == "IID":
-                Z_syn = Z_iid(M, p_treat=0.2, rng=rng)
-            elif pattern_name == "Block":
-                Z_syn = Z_block(M, m1=m1, m2=m2, rng=rng)
-            elif pattern_name == "Staggered":
-                Z_syn = Z_stagger(M, m1=m1, min_start=m2, rng=rng)
-            elif pattern_name == "Adaptive":
-                Z_syn = Z_adaptive(M, lookback_a=lookback_a, duration_b=duration_b)
-            else:
-                raise ValueError(f"Unknown pattern: {pattern_name}")
-
-            # Guard: ensure at least one treated cell
-            if Z_syn.sum() == 0:
-                i = int(rng.integers(0, n))
-                Z_syn[i, int(rng.integers(0, max(T, 1)))] = 1
+            Z_syn = draw_synthetic_z(M, pattern_name, rng)
 
             for method_name, valid_patterns in methods_dict.items():
                 if pattern_name not in valid_patterns:
                     continue
 
-                # Run estimator on pure baseline — no injection, true tau = 0
                 tau_hat = get_tau_from_method(method_name, M, Z_syn)
 
-                if not np.isnan(tau_hat):
-                    relative_tau = abs(tau_hat) / std_M
-                    is_fp = relative_tau > fpr_threshold
-                    if verbose:
-                        fp_flag = " [FP]" if is_fp else ""
+                if verbose:
+                    if not np.isnan(tau_hat):
                         print(
                             f"    {method_name} (trial {trial + 1}/{n_trials}): "
-                            f"tau_hat={tau_hat:.4f}, rel={relative_tau:.4f}{fp_flag}"
+                            f"tau_hat={tau_hat:.4f}"
                         )
-                else:
-                    relative_tau = np.nan
-                    is_fp = False
-                    if verbose:
+                    else:
                         print(f"    {method_name}: FAILED")
 
                 results.append(
                     {
-                        "method":           method_name,
-                        "pattern":          pattern_name,
-                        "baseline_type":    baseline_type,
-                        "trial":            trial,
-                        "tau_hat":          tau_hat,
-                        "std_M":            std_M,
-                        "relative_tau":     relative_tau,
-                        "is_false_positive": is_fp,
+                        "method":        method_name,
+                        "pattern":       pattern_name,
+                        "baseline_type": baseline_type,
+                        "trial":         trial,
+                        "tau_hat":       tau_hat,
+                        "std_M":         std_M,
                     }
                 )
 
@@ -217,40 +237,41 @@ def run_aa_test(
     df = pd.DataFrame(results)
 
     if verbose and not df.empty:
-        _print_aa_summary(df, fpr_threshold)
+        _print_aa_summary(df)
 
     return df
 
 
-def _print_aa_summary(df: pd.DataFrame, fpr_threshold: float) -> None:
-    """Print FPR + mean |tau_hat| grouped by method / pattern."""
+def _print_aa_summary(df: pd.DataFrame) -> None:
+    """Print mean / std of ``tau_hat`` under the null, by method and pattern."""
     summary = (
-        df.groupby(["method", "pattern"])
+        df.groupby(["method", "pattern"], sort=True)
         .agg(
-            fpr=("is_false_positive", "mean"),
+            mean_tau=("tau_hat", "mean"),
+            std_tau=("tau_hat", "std"),
             mean_abs_tau=("tau_hat", lambda x: x.abs().mean()),
-            std_abs_tau=("tau_hat", lambda x: x.abs().std()),
             n_trials=("trial", "count"),
         )
         .reset_index()
     )
 
     col_widths = {
-        "method":  max(len("method"),  summary["method"].str.len().max()),
-        "pattern": max(len("pattern"), summary["pattern"].str.len().max()),
-        "fpr":     len("FPR"),
-        "tau":     len("mean |tau_hat| +/- std"),
+        "method":  max(len("method"), int(summary["method"].str.len().max() or 6)),
+        "pattern": max(len("pattern"), int(summary["pattern"].str.len().max() or 8)),
+        "mean":    len("mean(tau)"),
+        "sd":      len("sd(|tau|)"),
     }
 
     header = (
         f"{'method':<{col_widths['method']}}  "
         f"{'pattern':<{col_widths['pattern']}}  "
-        f"{'FPR':>{col_widths['fpr']}}  "
-        f"{'mean |tau_hat| +/- std':>{col_widths['tau']}}"
+        f"{'mean(tau)':>{col_widths['mean']}}  "
+        f"{'std(tau)':>{col_widths['mean']}}  "
+        f"{'mean|tau|':>{col_widths['sd']}}"
     )
     sep = "-" * len(header)
 
-    print(f"\n=== A/A Summary (fpr_threshold={fpr_threshold}) ===")
+    print("\n=== A/A Summary (null distribution of tau_hat) ===")
     print(sep)
     print(header)
     print(sep)
@@ -261,13 +282,103 @@ def _print_aa_summary(df: pd.DataFrame, fpr_threshold: float) -> None:
             if prev_method is not None:
                 print(sep)
             prev_method = row["method"]
-        std_s = f"{row['std_abs_tau']:.4f}" if not np.isnan(row["std_abs_tau"]) else "n/a"
-        tau_cell = f"{row['mean_abs_tau']:.4f} +/- {std_s}"
+        mt = row["mean_tau"]
+        st = row["std_tau"]
+        mat = row["mean_abs_tau"]
+        mt_s = f"{mt:.4f}" if pd.notna(mt) else "n/a"
+        st_s = f"{st:.4f}" if pd.notna(st) else "n/a"
+        mat_s = f"{mat:.4f}" if pd.notna(mat) else "n/a"
         print(
             f"{row['method']:<{col_widths['method']}}  "
             f"{row['pattern']:<{col_widths['pattern']}}  "
-            f"{row['fpr']:>{col_widths['fpr']}.2f}  "
-            f"{tau_cell:>{col_widths['tau']}}"
+            f"{mt_s:>{col_widths['mean']}}  "
+            f"{st_s:>{col_widths['mean']}}  "
+            f"{mat_s:>{col_widths['sd']}}"
         )
 
     print(sep)
+
+
+def _kde_density_curve(
+    x: np.ndarray,
+    x_grid: np.ndarray,
+):
+    """
+    Evaluate a Gaussian KDE density at ``x_grid``. Returns None if KDE is not defined.
+    """
+    from scipy.stats import gaussian_kde
+
+    x = np.asarray(x, dtype=float)
+    x = x[np.isfinite(x)]
+    if x.size < 2:
+        return None
+    if np.std(x, ddof=1) < 1e-14 * (1.0 + abs(np.mean(x))):
+        return None
+    kde = gaussian_kde(x)
+    return kde(x_grid)
+
+
+def plot_aa_null_figure(
+    null_df: pd.DataFrame,
+    *,
+    grid_points: int = 256,
+    figsize: Tuple[float, float] = (7.2, 3.6),
+):
+    """
+    KDE (line only) of ``tau_hat`` under the null for each pattern (subplot) and
+    method (overlaid curves, no fill).
+
+    Expects columns ``method``, ``pattern``, ``tau_hat`` as returned by
+    :func:`run_aa_test`. Requires ``matplotlib`` and ``scipy``.
+    """
+    import matplotlib.pyplot as plt
+
+    _power_figure_style()
+    patterns = list(dict.fromkeys(null_df["pattern"].tolist()))
+    methods = list(dict.fromkeys(null_df["method"].tolist()))
+    n_p = len(patterns)
+    min_h_per_panel = 3.0
+    fig_h = max(figsize[1], min_h_per_panel * n_p)
+    fig, axes = plt.subplots(n_p, 1, figsize=(figsize[0], fig_h), squeeze=False)
+    colors = method_line_colors(len(methods))
+    n_gp = max(32, int(grid_points))
+
+    for ax, pat in zip(axes.flat, patterns):
+        sub = null_df[null_df["pattern"] == pat]
+        all_tau = sub["tau_hat"].to_numpy(dtype=float)
+        all_tau = all_tau[np.isfinite(all_tau)]
+        if all_tau.size == 0:
+            ax.axvline(0.0, color="k", linestyle="--", linewidth=0.9)
+            ax.set_title(f"Null distribution — pattern = {pat}")
+            ax.set_xlabel(r"$\hat\tau$")
+            ax.set_ylabel("density")
+            continue
+        lo, hi = float(np.min(all_tau)), float(np.max(all_tau))
+        span = hi - lo
+        pad = 0.08 * span if span > 0 else max(abs(lo), abs(hi), 1.0) * 0.08
+        x_grid = np.linspace(lo - pad, hi + pad, n_gp)
+
+        for k, meth in enumerate(methods):
+            x = sub[sub["method"] == meth]["tau_hat"].to_numpy(dtype=float)
+            y = _kde_density_curve(x, x_grid)
+            if y is None:
+                continue
+            ax.plot(
+                x_grid,
+                y,
+                color=colors[k % len(colors)],
+                label=meth,
+                linewidth=2.0,
+            )
+        ax.axvline(0.0, color="k", linestyle="--", linewidth=0.9)
+        ax.set_title(f"Null distribution — pattern = {pat}")
+        ax.set_xlabel(r"$\hat\tau$")
+        ax.set_ylabel("density")
+        ax.legend(fontsize=8, loc="upper right", framealpha=0.92)
+
+    fig.suptitle(
+        r"A/A: $\hat\tau$ when true effect is 0 (fixed $M$, random $Z_\mathrm{syn}$)",
+        fontsize=12,
+    )
+    fig.tight_layout()
+    return fig, axes

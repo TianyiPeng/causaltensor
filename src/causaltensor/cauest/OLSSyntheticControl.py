@@ -103,8 +103,8 @@ class OLSSCPanelSolver(PanelSolver):
     Y : ndarray, shape (N, T)
         Panel outcomes (units x time).
     Z : ndarray, shape (N, T)
-        Treatment indicators; first period with any ``Z==1`` defines the end of
-        the pre-period for all units (common ``T0`` index).
+        Treatment indicators.  Each treated row's first ``1`` defines that
+        unit's pre-period boundary.
     X : ndarray, shape (N, K), optional
         Time-invariant covariates per unit (same row order as ``Y``).
     pval : bool, optional
@@ -123,7 +123,7 @@ class OLSSCPanelSolver(PanelSolver):
         self.Y = np.asarray(Y, dtype=float).T
         self.X = np.asarray(X, dtype=float).T if X is not None else None
         (
-            self.T0,
+            self.T0_units,
             self.Y0,
             self.Y1,
             self.X0,
@@ -131,12 +131,14 @@ class OLSSCPanelSolver(PanelSolver):
             self.control_units,
             self.treatment_units,
         ) = self.preprocess(np.asarray(Z, dtype=float).T)
+        # Global earliest adoption time — used by permutation_test placebo fits.
+        self.T0 = int(np.min(self.T0_units))
         self.individual_te = np.zeros(len(self.treatment_units))
         self.pval = pval
 
     def preprocess(self, Z):
         """
-        Split outcomes into treated vs control columns and locate pre-period length.
+        Split outcomes into treated vs control columns; compute per-unit pre-period lengths.
 
         Parameters
         ----------
@@ -145,8 +147,9 @@ class OLSSCPanelSolver(PanelSolver):
 
         Returns
         -------
-        T0 : int
-            Index of the first period with any treatment (pre-period is ``0:T0``).
+        T0_units : ndarray of int, shape (n_treated,)
+            First treated period for each treated unit (column order matches
+            ``treatment_units``).  For block treatment all values are equal.
         Y0 : ndarray
             Control columns of ``Y`` (time x n_control).
         Y1 : ndarray
@@ -166,10 +169,14 @@ class OLSSCPanelSolver(PanelSolver):
         else:
             X0 = None
             X1 = None
-        T0 = np.where(Z.any(axis=1))[0][0]
-        return T0, Y0, Y1, X0, X1, control_units, treatment_units
+        # Per-unit first treatment period.
+        T0_units = np.array([
+            int(np.where(Z[:, col] == 1)[0][0])
+            for col in treatment_units
+        ])
+        return T0_units, Y0, Y1, X0, X1, control_units, treatment_units
 
-    def ols_inference(self, Y1, Y0, X1=None, X0=None):
+    def ols_inference(self, Y1, Y0, T0, X1=None, X0=None):
         """
         Fit synthetic-control weights on the pre-period and extrapolate.
 
@@ -182,6 +189,8 @@ class OLSSCPanelSolver(PanelSolver):
             Treated unit outcome series.
         Y0 : ndarray, shape (T, n_control)
             Control unit outcomes.
+        T0 : int
+            First treated period for this unit; pre-period is ``0:T0``.
         X1 : ndarray, shape (K,), optional
             Covariates for the treated unit.
         X0 : ndarray, shape (K, n_control), optional
@@ -198,8 +207,8 @@ class OLSSCPanelSolver(PanelSolver):
         V : ndarray or None
             Predictor weights if covariates are used; otherwise None.
         """
-        y_c = Y0[: self.T0]
-        y_t = Y1[: self.T0]
+        y_c = Y0[:T0]
+        y_t = Y1[:T0]
 
         if X1 is not None:
             # Covariate path: alternate between optimising W (donor weights) and
@@ -234,7 +243,7 @@ class OLSSCPanelSolver(PanelSolver):
             W = _solve_simplex_qp(y_c, y_t)
 
         M = Y0 @ W
-        tau = np.mean((Y1 - M)[self.T0 :])
+        tau = np.mean((Y1 - M)[T0:])
         return M, tau, W, V
 
     def fit(self):
@@ -262,17 +271,19 @@ class OLSSCPanelSolver(PanelSolver):
         tau = 0.0
         M = np.copy(self.Y)
         self.individual_te = []
-        for i, s in enumerate(self.treatment_units):
+        for i, (s, T0_i) in enumerate(zip(self.treatment_units, self.T0_units)):
             Y1_s = self.Y1[:, i].reshape((T,))
             if self.X is not None:
                 K = len(self.X1)
                 X1_s = self.X1[:, i].reshape((K,))
                 counterfactual_s, tau_s, W_s, V_s = self.ols_inference(
-                    Y1_s, self.Y0, X1_s, self.X0
+                    Y1_s, self.Y0, T0_i, X1_s, self.X0
                 )
                 V.append(V_s)
             else:
-                counterfactual_s, tau_s, W_s, V_s = self.ols_inference(Y1_s, self.Y0)
+                counterfactual_s, tau_s, W_s, V_s = self.ols_inference(
+                    Y1_s, self.Y0, T0_i
+                )
             tau += tau_s
             M[:, s] = counterfactual_s
             weights.append(W_s)
@@ -316,8 +327,8 @@ class OLSSCPanelSolver(PanelSolver):
         for i, cu in enumerate(self.control_units):
             Y1_s = self.Y0[:, i].reshape((T,))
             Y0_loo = np.hstack((self.Y0[:, :i], self.Y0[:, i + 1 :]))
-            # ols_inference returns (M, tau, W, V); unpack all four for SciPy compatibility.
-            _, tau_s, _, _ = self.ols_inference(Y1_s, Y0_loo)
+            # Placebo units are never treated; use the global earliest T0 as their cutoff.
+            _, tau_s, _, _ = self.ols_inference(Y1_s, Y0_loo, self.T0)
             individual_te_control.append([cu, tau_s])
 
         sorted_te = sorted(
