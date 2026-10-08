@@ -55,6 +55,7 @@ def generate(
     sigma_unit_scale: float = 0.8,
     sigma_time_scale: float = 0.2,
     seed: Optional[int] = None,
+    normalize_M: bool = False,
 ) -> Tuple[np.ndarray, np.ndarray, float]:
     """
     Generate a synthetic panel from a low-rank factor model.
@@ -101,6 +102,9 @@ def generate(
         ``sigma_time_scale * |tau*|``). Ignored when ``treatment_level`` is ``None``.
     seed : int or None, optional
         Random seed for full reproducibility.
+    normalize_M : bool, default False
+        If True, rescale M so ``std(M)`` equals 1 before treatment and noise.
+        The mean is left unchanged.
 
     Returns
     -------
@@ -149,6 +153,8 @@ def generate(
         M = generate_low_rank_M_nonneg(N, T, rank=rank, mean_M=max(mean_M, 1.0), rng=rng)
     else:
         M = generate_low_rank_M(N, T, rank=rank, mean=mean_M, scale=scale_M, rng=rng)
+    if normalize_M:
+        M = M / np.std(M)
 
     # --- Generate treatment mask ---
     if treatment_pattern is None:

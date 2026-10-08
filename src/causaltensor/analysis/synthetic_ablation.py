@@ -51,7 +51,8 @@ def _held_defaults_caption(axis_key: str) -> str:
     """One-line math caption: the three DGP knobs held fixed while `axis_key` is swept."""
     if axis_key == "rank":
         return (
-            rf"fixed: $\delta$={_BASE_SIGMA_UNIT:g}, "
+            rf"fixed: $\mathrm{{sd}}(M)=1$, "
+            rf"$\delta$={_BASE_SIGMA_UNIT:g}, "
             rf"$\eta$={_BASE_SIGMA_TIME:g}, $\sigma$={_BASE_NOISE:g}"
         )
     if axis_key == "sigma_unit":
@@ -150,6 +151,7 @@ def run_ablation_grid(
                     sigma_unit_scale=sigma_u,
                     sigma_time_scale=sigma_t,
                     seed=int(trial_seed),
+                    normalize_M=(axis_key == "rank"),
                 )
                 Zf = np.asarray(Z, dtype=float)
 
