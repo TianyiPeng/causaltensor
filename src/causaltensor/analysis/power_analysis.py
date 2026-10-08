@@ -361,7 +361,7 @@ def main(argv: Optional[Sequence[str]] = None) -> List[Dict[str, Any]]:
         type=float,
         default=None,
         help=(
-            "Relative effect grid δ; default: nine values from 0 to 0.2 (see "
+            "Relative effect grid δ; default: nine values from 0 to 0.08 (see "
             "DEFAULT_RELATIVE_EFFECTS). Example: --rel-effects 0 0.05 0.1 0.2"
         ),
     )

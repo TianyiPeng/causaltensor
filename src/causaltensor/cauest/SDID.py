@@ -251,12 +251,16 @@ class SDIDPanelSolver(PanelSolver):
 
         Block treatment is the one-cohort special case.
         Staggered cohort effects are weighted by the number of treated unit-time cells.
+        Donor rows of ``baseline`` use those same weights across cohort-specific
+        fitted surfaces, so shared diagnostics stay defined.
         """
         if self.X_cov is not None:
             self.adjust_for_covariates()
 
         N, T = self.X.shape
         M_global = np.full_like(self.X, np.nan, dtype=float)
+        donor_M_sum = np.zeros((len(self.donor_units), T))
+        donor_weight_sum = 0
 
         cohort_effects = {}
         cohort_weights = {}
@@ -295,14 +299,13 @@ class SDIDPanelSolver(PanelSolver):
             w_global[units_global] = w_sub
             cohort_unit_weights[start] = w_global
 
-            # Counterfactual rows for treated units belong uniquely to this cohort.
             for local_idx, global_idx in zip(treat_local, cohort_global):
                 M_global[global_idx] = M_sub[local_idx]
 
-            # Block case: only one cohort, so the whole baseline is well-defined.
-            if len(self.cohorts) == 1:
-                M_global[units_global] = M_sub
+            donor_M_sum += n_treated_cells * M_sub[donor_local]
+            donor_weight_sum += n_treated_cells
 
+        M_global[self.donor_units] = donor_M_sum / donor_weight_sum
         tau = weighted_tau_sum / total_treated_cells
 
         # Preserve old unit_weights/time_weights behavior for ordinary block SDID.

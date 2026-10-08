@@ -219,13 +219,22 @@ def plot_empirical_power_figure(
             s2 = sub[sub["method"] == meth].sort_values("relative_effect")
             if s2.empty:
                 continue
+            color = colors[k % len(colors)]
+            ax.fill_between(
+                s2["relative_effect"],
+                s2["ci_low"],
+                s2["ci_high"],
+                color=color,
+                alpha=0.15,
+                linewidth=0,
+            )
             ax.plot(
                 s2["relative_effect"],
                 s2["power"],
                 marker="o",
                 ms=4,
                 linewidth=1.85,
-                color=colors[k % len(colors)],
+                color=color,
                 label=meth,
             )
         ax.set_ylim(-0.05, 1.05)
