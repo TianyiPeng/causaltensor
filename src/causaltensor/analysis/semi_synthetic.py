@@ -341,24 +341,27 @@ def _aggregate_results(results_df: pd.DataFrame) -> pd.DataFrame:
     for (method, pattern, level), g in results_df.groupby(
         ["method", "pattern", "treatment_level"], sort=True
     ):
-        ok = g[np.isfinite(g["tau_hat"]) & np.isfinite(g["tau_star"]) & (g["tau_star"] != 0)]
+        ok = g[np.isfinite(g["tau_hat"]) & np.isfinite(g["tau_star"])]
         diff = ok["tau_hat"] - ok["tau_star"]
-        err = ok["error"]
-        rows.append(
-            {
-                "method": method,
-                "pattern": pattern,
-                "treatment_level": level,
-                "mean_error": err.mean(),
-                "std_error": err.std(),
-                "signed_bias": ((ok["tau_hat"] - ok["tau_star"]) / ok["tau_star"]).mean(),
-                "rmse": float(np.sqrt(np.mean(np.square(diff)))) if len(ok) else np.nan,
-                "error_p50": err.quantile(0.5),
-                "error_p90": err.quantile(0.9),
-                "n_ok": int(np.isfinite(g["tau_hat"]).sum()),
-                "n_trials": int(len(g)),
-            }
-        )
+        abs_diff = diff.abs()
+        rel_err = ok["error"].dropna()
+
+        n_ok, n_trials = len(ok), len(g)
+        rows.append({
+            "method": method,
+            "pattern": pattern,
+            "treatment_level": level,
+            "mean_error": rel_err.mean(),
+            "std_error": rel_err.std(),
+            "signed_bias": diff.mean(),
+            "mae": abs_diff.mean(),
+            "rmse": float(np.sqrt(np.mean(np.square(diff)))) if n_ok else np.nan,
+            "abs_error_p50": abs_diff.quantile(0.5),
+            "abs_error_p90": abs_diff.quantile(0.9),
+            "n_ok": n_ok,
+            "n_trials": n_trials,
+            "success_rate": n_ok / n_trials if n_trials else np.nan,
+        })
     return pd.DataFrame(rows)
 
 
