@@ -80,8 +80,8 @@ def run_power_analysis_for_baseline(
     file_prefix: str = "",
     methods: Optional[List[str]] = None,
     pattern: str = DEFAULT_PATTERN,
-    n_trials_null: int = 40,
-    n_trials_power: int = 120,
+    n_trials_null: int = 500,
+    n_trials_power: int = 200,
     relative_effects: Sequence[float] = DEFAULT_RELATIVE_EFFECTS,
     alpha: float = 0.05,
     seed_null: int = 0,
@@ -198,8 +198,8 @@ def run_power_analysis(
     root_out: Optional[Path] = None,
     methods: Optional[List[str]] = None,
     pattern: str = DEFAULT_PATTERN,
-    n_trials_null: int = 40,
-    n_trials_power: int = 120,
+    n_trials_null: int = 500,
+    n_trials_power: int = 200,
     relative_effects: Optional[Sequence[float]] = None,
     alpha: float = 0.05,
     seed: int = 0,
@@ -327,13 +327,13 @@ def main(argv: Optional[Sequence[str]] = None) -> List[Dict[str, Any]]:
         "--n-trials-null",
         type=int,
         default=500,
-        help="Monte Carlo draws per (pattern, method) for null A/A (default: 40).",
+        help="Monte Carlo draws per (pattern, method) for null A/A (default: 500).",
     )
     parser.add_argument(
         "--n-trials-power",
         type=int,
         default=200,
-        help="Monte Carlo replications per (delta, pattern, method) for power (default: 120).",
+        help="Monte Carlo replications per (delta, pattern, method) for power (default: 200).",
     )
     parser.add_argument(
         "--alpha",

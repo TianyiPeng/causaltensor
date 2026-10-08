@@ -15,6 +15,7 @@ For the **null distribution plot** (KDE) of :math:`\hat\tau`, see :func:`~causal
 
 from __future__ import annotations
 
+from statistics import NormalDist
 from typing import List, Optional, Sequence, Tuple
 
 import numpy as np
@@ -62,6 +63,19 @@ def empirical_critical_abs_tau(
     return pd.DataFrame(rows)
 
 
+def _wilson_interval(successes: int, n: int, alpha: float = 0.05) -> Tuple[float, float]:
+    if n == 0:
+        return float("nan"), float("nan")
+
+    z = NormalDist().inv_cdf(1.0 - alpha / 2.0)
+    p = successes / n
+    z2 = z * z
+    denom = 1.0 + z2 / n
+    center = (p + z2 / (2.0 * n)) / denom
+    half = z * (p * (1.0 - p) / n + z2 / (4.0 * n * n)) ** 0.5 / denom
+    return max(0.0, center - half), min(1.0, center + half)
+
+
 def run_empirical_power_grid(
     O: np.ndarray,
     Z: np.ndarray,
@@ -98,7 +112,7 @@ def run_empirical_power_grid(
     thresholds_df
         Copy of empirical critical values (from ``null_df``).
     power_df
-        Columns ``method, pattern, relative_effect, power, rejections, n_trials, std_err`` .
+        Columns ``method, pattern, relative_effect, power, rejections, n_trials, std_err, ci_low, ci_high``.
     """
     O = np.asarray(O, dtype=float)
     Z = np.asarray(Z, dtype=float)
@@ -154,6 +168,7 @@ def run_empirical_power_grid(
 
                 p_hat = rej / ok if ok > 0 else float("nan")
                 se = np.sqrt(p_hat * (1 - p_hat) / ok) if ok > 0 else float("nan")
+                ci_low, ci_high = _wilson_interval(rej, ok)
                 power_rows.append(
                     {
                         "method": method_name,
@@ -163,6 +178,8 @@ def run_empirical_power_grid(
                         "rejections": rej,
                         "n_trials": ok,
                         "std_err": se,
+                        "ci_low": ci_low,
+                        "ci_high": ci_high,
                     }
                 )
                 if verbose:
