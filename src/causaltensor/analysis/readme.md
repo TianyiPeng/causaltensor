@@ -107,7 +107,7 @@ python semi_synthetic.py dunnhumby --plots --treatment-patterns "Adaptive,IID"
 | File | Contents |
 |------|----------|
 | `semi_synthetic_control_results_detailed.csv` | All Monte Carlo trials |
-| `semi_synthetic_control_results_aggregated.csv` | Mean ± std per `(method, pattern, level)` |
+| `semi_synthetic_control_results_aggregated.csv` | Per `(method, pattern, level)`: mean relative error, signed bias, RMSE, error quantiles, successful runs |
 | `semi_synthetic_control_error_boxplot.png` | Box plots by treatment level (with `--plots`) |
 
 Rebuild a box plot from an existing detailed CSV:

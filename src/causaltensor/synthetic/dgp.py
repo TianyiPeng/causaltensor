@@ -103,9 +103,7 @@ def generate(
     seed : int or None, optional
         Random seed for full reproducibility.
     normalize_M : bool, default False
-        If True, rescale M so ``std(M)`` equals 1 before treatment and noise.
-        The mean is left unchanged.
-
+        If True, rescale M so ``std(M)`` equals 1 before treatment and noise. M is rescaled but not centered.
     Returns
     -------
     O : np.ndarray, shape (N, T)

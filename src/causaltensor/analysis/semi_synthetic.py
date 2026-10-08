@@ -335,6 +335,33 @@ def run_semi_synthetic_experiment(O, treated_states, treat_start_years,
     )
 
 
+def _aggregate_results(results_df: pd.DataFrame) -> pd.DataFrame:
+    """Summaries per (method, pattern, treatment_level), on finite estimates."""
+    rows = []
+    for (method, pattern, level), g in results_df.groupby(
+        ["method", "pattern", "treatment_level"], sort=True
+    ):
+        ok = g[np.isfinite(g["tau_hat"]) & np.isfinite(g["tau_star"]) & (g["tau_star"] != 0)]
+        diff = ok["tau_hat"] - ok["tau_star"]
+        err = ok["error"]
+        rows.append(
+            {
+                "method": method,
+                "pattern": pattern,
+                "treatment_level": level,
+                "mean_error": err.mean(),
+                "std_error": err.std(),
+                "signed_bias": ((ok["tau_hat"] - ok["tau_star"]) / ok["tau_star"]).mean(),
+                "rmse": float(np.sqrt(np.mean(np.square(diff)))) if len(ok) else np.nan,
+                "error_p50": err.quantile(0.5),
+                "error_p90": err.quantile(0.9),
+                "n_ok": int(np.isfinite(g["tau_hat"]).sum()),
+                "n_trials": int(len(g)),
+            }
+        )
+    return pd.DataFrame(rows)
+
+
 def run_experiments(
     O,
     treated_states,
@@ -389,8 +416,7 @@ def run_experiments(
         verbose=True,
     )
 
-    aggregated = results_df.groupby(['method', 'pattern', 'treatment_level'])['error'].agg(['mean', 'std']).reset_index()
-    aggregated.columns = ['method', 'pattern', 'treatment_level', 'mean_error', 'std_error']
+    aggregated = _aggregate_results(results_df)
 
     # Save detailed results (all trials) to CSV
     _base = Path(__file__).resolve().parent / "results" / "semi_synthetic_data"
