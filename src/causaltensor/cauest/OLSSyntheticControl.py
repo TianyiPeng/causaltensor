@@ -271,8 +271,12 @@ class OLSSCPanelSolver(PanelSolver):
         tau = 0.0
         M = np.copy(self.Y)
         self.individual_te = []
+        weighted_tau_sum = 0.0
+        total_treated_cells = 0
+
         for i, (s, T0_i) in enumerate(zip(self.treatment_units, self.T0_units)):
             Y1_s = self.Y1[:, i].reshape((T,))
+
             if self.X is not None:
                 K = len(self.X1)
                 X1_s = self.X1[:, i].reshape((K,))
@@ -284,12 +288,18 @@ class OLSSCPanelSolver(PanelSolver):
                 counterfactual_s, tau_s, W_s, V_s = self.ols_inference(
                     Y1_s, self.Y0, T0_i
                 )
-            tau += tau_s
+
             M[:, s] = counterfactual_s
             weights.append(W_s)
             self.individual_te.append([s, tau_s])
 
-        tau /= len(self.treatment_units)
+            # number of treated cells for this unit
+            n_treated_cells_i = int(np.sum(self._Z_raw[s]))
+
+            weighted_tau_sum += tau_s * n_treated_cells_i
+            total_treated_cells += n_treated_cells_i
+
+        tau = weighted_tau_sum / total_treated_cells
 
         if self.pval:
             self.individual_te = self.permutation_test()

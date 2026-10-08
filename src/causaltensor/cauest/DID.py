@@ -84,7 +84,7 @@ class DIDPanelSolver(PanelSolver):
         -------
         DIDResult
             ``.tau``                 -- ATT scalar (or array if ``X`` covariates).
-            ``.baseline``  / ``.M`` -- fitted ``a_i + b_j`` surface (N x T).
+            ``.baseline``  / ``.M`` -- fitted untreated counterfactual surface a_i + b_j + X_ij beta
             ``.row_fixed_effects``   -- unit FE vector (N,).
             ``.column_fixed_effects`` -- time FE vector (T,).
             ``.beta``               -- covariate coefficients (None if no ``X``).
@@ -94,10 +94,12 @@ class DIDPanelSolver(PanelSolver):
         if O is None:
             raise ValueError("O must be provided either at construction time or to fit()")
         res_fe = self.fixed_effects_solver.fit(O)
-        k = self.Z.shape[0]
+        k = self.Z.shape[2]
         tau = res_fe.beta[:k]
         beta = res_fe.beta[k:] if self.X is not None else None
-        res = DIDResult(baseline=res_fe.fitted_value, tau=tau, beta=beta,
+        res = DIDResult(baseline=res_fe.fitted_value - np.sum(self.Z * np.asarray(tau).reshape(1, 1, -1),axis=2,), 
+                        tau=tau, 
+                        beta=beta,
                         row_fixed_effects=res_fe.row_fixed_effects,
                         column_fixed_effects=res_fe.column_fixed_effects,
                         return_tau_scalar=self.return_tau_scalar)
