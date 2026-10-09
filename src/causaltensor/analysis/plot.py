@@ -468,47 +468,58 @@ _CATE_GROUPS = (
 
 
 def plot_cate_figure(metrics: pd.DataFrame, gates: pd.DataFrame) -> plt.Figure:
-    """PEHE–correlation scatter above covariate-group effects."""
-    fig, axes = plt.subplots(2, 1, figsize=(8.4, 8.6), layout="constrained")
+    """Root-PEHE–correlation scatter above covariate-group effects."""
+    fig, axes = plt.subplots(2, 1, figsize=(6.5, 6.2), layout="constrained")
     fig.patch.set_facecolor("white")
-    summary = metrics.groupby("method")[["pehe", "corr"]].mean()
+    summary = metrics.groupby("method")[["root_pehe", "corr"]].mean()
     methods = _ordered_methods(summary.index)
     ax = axes[0]
     for method in methods:
         ax.scatter(
-            summary.loc[method, "pehe"],
+            summary.loc[method, "root_pehe"],
             summary.loc[method, "corr"],
-            s=46,
+            s=36,
             color=method_color(method),
-            label=method,
             zorder=3,
         )
-    ax.set_xlabel("PEHE")
+    ax.set_xlabel("Root PEHE")
     ax.set_ylabel(r"corr$(\hat\tau_i,\tau_i)$")
     ax.set_title("(a) CATE recovery")
     _style_panel(ax)
 
     ax = axes[1]
     x = np.arange(len(_CATE_GROUPS))
-    true = []
-    for covariate, group, _label in _CATE_GROUPS:
-        sub = gates[(gates["covariate"] == covariate) & (gates["group"] == group)]
-        true.append(float(sub["tau_true"].mean()) if len(sub) else np.nan)
-    ax.plot(x, true, color="black", marker="o", ms=8, lw=2.2, label="True", zorder=3)
-    for method in methods:
+    series = [("True", None)] + [(method, method) for method in methods]
+    offsets = np.linspace(-0.32, 0.32, len(series))
+    for offset, (label, method) in zip(offsets, series):
         ys = []
-        g = gates[gates["method"] == method]
         for covariate, group, _label in _CATE_GROUPS:
-            sub = g[(g["covariate"] == covariate) & (g["group"] == group)]
-            ys.append(float(sub["tau_hat"].mean()) if len(sub) else np.nan)
-        ax.plot(x, ys, color=method_color(method), marker="o", ms=5, lw=1.4, label=method)
+            if method is None:
+                sub = gates[(gates["covariate"] == covariate) & (gates["group"] == group)]
+                col = "tau_true"
+            else:
+                sub = gates[
+                    (gates["method"] == method)
+                    & (gates["covariate"] == covariate)
+                    & (gates["group"] == group)
+                ]
+                col = "tau_hat"
+            ys.append(float(sub[col].mean()) if len(sub) else np.nan)
+        ax.scatter(
+            x + offset,
+            ys,
+            s=28 if method is None else 16,
+            color="black" if method is None else method_color(method),
+            label=label,
+            zorder=3,
+        )
     ax.set_xticks(x)
     ax.set_xticklabels([label for _c, _g, label in _CATE_GROUPS], rotation=25, ha="right")
     ax.set_ylabel("Treatment effect")
     ax.set_title("(b) Group average effects")
     _style_panel(ax)
     handles, labels = axes[1].get_legend_handles_labels()
-    fig.legend(handles, labels, loc="outside lower center", ncol=4, frameon=False, fontsize=12)
+    fig.legend(handles, labels, loc="outside lower center", ncol=4, frameon=False, fontsize=10)
     return fig
 
 

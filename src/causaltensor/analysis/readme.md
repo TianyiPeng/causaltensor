@@ -111,7 +111,7 @@ python semi_synthetic.py dunnhumby --treatment-patterns "Adaptive,IID"
 
 ### 3. Heterogeneous effects (CATE)
 
-PWT only, Block assignment, one treatment level. The baseline is the same control-panel `M` as the ATT benchmark. Unit effects are a fixed linear function of standardized `hc`, `csh_i`, and `openness`, recentered on the treated units so their average is still `tau*`. Each estimator is scored from the unit effects implied by its fitted untreated surface.
+PWT only, Block assignment, one treatment level. The baseline is the same control-panel `M` as the ATT benchmark. Unit effects are a fixed linear function of standardized `hc`, `csh_i`, and `openness`, centered on the full sample so their population average is `tau*`. A trial's ATT is the average of those fixed effects over the units treated in that trial. Group cuts are the full-sample medians. Each estimator is scored from the unit effects implied by its fitted untreated surface.
 
 ```bash
 python -m causaltensor.analysis.cate
@@ -124,13 +124,13 @@ python -m causaltensor.analysis.cate
 | Treatment level | `0.1` |
 | Trials | `100` |
 | Covariates | `hc`, `csh_i`, `openness` |
-| Coefficients | `1, 0.5, -0.5` on `hc`, `csh_i`, `openness`; heterogeneity scale `gamma = 1` |
+| Coefficients | `1, 0.5, -0.5` on `hc`, `csh_i`, `openness`; heterogeneity scale `gamma = 0.5` |
 
 **Outputs** (`results/cate/`):
 
 | File | Contents |
 |------|----------|
-| `cate_pwt_block_delta0.1_trials100_metrics.csv` | Per trial and method: PEHE and correlation |
+| `cate_pwt_block_delta0.1_trials100_metrics.csv` | Per trial and method: root PEHE, correlation, and the trial ATT |
 | `cate_pwt_block_delta0.1_trials100_gates.csv` | Per trial, method, and covariate group: true and estimated GATE |
 | `cate_pwt_block_delta0.1_trials100.png` | PEHE–correlation scatter and group-effect panel (`python -m causaltensor.analysis.plot`) |
 
