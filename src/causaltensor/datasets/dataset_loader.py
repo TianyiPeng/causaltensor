@@ -197,7 +197,6 @@ def load_dataset(
         - truus: Truus retail dataset
         - movielens: MovieLens recommendation dataset
         - jsa_dc: D.C. Job Search Assistance RCT, 1996Q1 CONTROL vs SJSA
-        - wreb: Washington reemployment bonus RCT, 1988Q2 control vs treatment 3
     """
     try:
         loader = DATASET_BUILDERS[dataset_name]
@@ -649,39 +648,6 @@ def _load_jsa_dc(datasets_path: str) -> Tuple[pd.DataFrame, pd.DataFrame, None]:
     return Y_df, Z_df, None
 
 
-def _load_wreb(datasets_path: str) -> Tuple[pd.DataFrame, pd.DataFrame, None]:
-    """Washington reemployment bonus, 1988Q2 control versus treatment 3.
-
-    Thirteen pre-enrollment quarters, the enrollment quarter dropped, then six
-    post quarters. Quarters with no wage record are coded as 0. Units with any
-    quarter above 100,000 are dropped. ``Z`` is 1 for treatment 3 in every
-    post quarter.
-    """
-    pre = (
-        "wg851", "wg852", "wg853", "wg854",
-        "wg861", "wg862", "wg863", "wg864",
-        "wg871", "wg872", "wg873", "wg874",
-        "wg881",
-    )
-    post = ("wg883", "wg884", "wg891", "wg892", "wg893", "wg894")
-    df = pd.read_stata(f"{datasets_path}wreb.dta")
-    quarter = df["procdate"].dt.to_period("Q").astype(str)
-    arm = df["ppi"].astype(str)
-    keep = (df["asc"] == 1) & (quarter == "1988Q2") & arm.isin(["0", "3"])
-    cohort = df.loc[keep].sort_values("idno")
-    columns = pre + post
-    labels = [f"{1900 + int(c[2:4])}Q{c[4]}" for c in columns]
-    values = cohort.loc[:, columns].to_numpy(dtype=float)
-    values[values > 1e7] = 0.0
-    Y_df = pd.DataFrame(values, index=cohort["idno"].astype(int).astype(str), columns=labels)
-    Y_df.index.name = "idno"
-    Z_df = pd.DataFrame(0.0, index=Y_df.index, columns=Y_df.columns)
-    treated = cohort["ppi"].astype(str).to_numpy() == "3"
-    Z_df.iloc[treated, len(pre):] = 1.0
-    keep_units = Y_df.max(axis=1) <= 100_000
-    return Y_df.loc[keep_units], Z_df.loc[keep_units], None
-
-
 DATASET_BUILDERS: Dict[str, Callable[[str], Tuple[pd.DataFrame, Optional[pd.DataFrame], Optional[pd.DataFrame]]]] = {
     "smoking": _load_smoking_dataset,
     "basque": _load_basque_dataset,
@@ -700,7 +666,6 @@ DATASET_BUILDERS: Dict[str, Callable[[str], Tuple[pd.DataFrame, Optional[pd.Data
     "truus": _load_truus_dataset,
     "movielens": _load_movielens_dataset,
     "jsa_dc": _load_jsa_dc,
-    "wreb": _load_wreb,
 }
 
 

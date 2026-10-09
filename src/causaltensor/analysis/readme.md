@@ -43,7 +43,7 @@ The `static-plots` extra pulls in Kaleido, for saving Plotly figures from the no
 
 ### Data
 
-Raw panels live under `datasets/raw/` at the repo root (or pass `--raw-path` on dataset scripts). Built-in names include `smoking`, `basque`, `pwt`, `jsa_dc`, `wreb`, `dunnhumby`, `movielens`, and others—see `causaltensor.datasets.available_datasets()`.
+Raw panels live under `datasets/raw/` at the repo root (or pass `--raw-path` on dataset scripts). Built-in names include `smoking`, `basque`, `pwt`, `jsa_dc`, `dunnhumby`, `movielens`, and others—see `causaltensor.datasets.available_datasets()`.
 
 ## Run the scripts
 
@@ -84,11 +84,8 @@ python real_dataset_report.py dunnhumby
 
 **D.C. Job Search Assistance RCT** (`jsa_dc`). 1996Q1 `CONTROL` versus `SJSA` (486 each). Outcomes are quarterly earnings from 1994Q4 through 1995Q4 and 1996Q2 through 1998Q3; the entry quarter is dropped. Treatment is a Block onset in 1996Q2. `RCT` is the difference in mean post-period earnings, with a 95% interval.
 
-**Washington reemployment bonus** (`wreb`). Final analytic sample, 1988Q2 cohort, control versus treatment 3 (high bonus, short qualification period). Units with any quarter above $100,000 are dropped (9 controls, no treated people), leaving 1,022 and 494. Outcomes are quarterly earnings from 1985Q1 through 1988Q1 and 1988Q3 through 1989Q4; the enrollment quarter is dropped. Quarters with no wage record are 0. Treatment is a Block onset in 1988Q3.
-
 ```bash
 python -m causaltensor.analysis.rct
-python -m causaltensor.analysis.rct --dataset wreb
 ```
 
 **Outputs** (`results/rct/`):
@@ -96,7 +93,6 @@ python -m causaltensor.analysis.rct --dataset wreb
 | File | Contents |
 |------|----------|
 | `jsa_dc.csv` | `RCT` with its standard error and 95% interval, then one estimate per method |
-| `wreb.csv` | Same columns for the Washington reemployment bonus cohort |
 
 ---
 
@@ -272,7 +268,7 @@ results/
 | Script | Role |
 |--------|------|
 | `real_dataset_report.py` | Real `Z`: tabular estimates and counterfactual series |
-| `rct.py` | JSA and WREB RCTs: randomized estimates next to the seven fits |
+| `rct.py` | D.C. JSA RCT: randomized estimate next to the seven fits |
 | `semi_synthetic.py` | Real panel + injected τ: error distributions |
 | `power_analysis.py` | Null calibration + empirical power |
 | `synthetic_ablation.py` | Synthetic DGP sensitivity (rank, heterogeneity, noise) |

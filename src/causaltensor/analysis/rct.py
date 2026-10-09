@@ -6,7 +6,6 @@ on the same panel.
 CLI::
 
     python -m causaltensor.analysis.rct
-    python -m causaltensor.analysis.rct --dataset wreb
 """
 
 from __future__ import annotations
@@ -28,7 +27,7 @@ from causaltensor.utils.panel import default_raw_datasets_path, prepare_panel
 logger = logging.getLogger(__name__)
 
 _RESULTS_SUBDIR = "rct"
-_DATASETS = ("jsa_dc", "wreb")
+_DATASETS = ("jsa_dc",)
 _Z95 = statistics.NormalDist().inv_cdf(0.975)
 
 
@@ -123,7 +122,7 @@ def main(argv: Optional[Sequence[str]] = None) -> Dict[str, Any]:
         nargs="+",
         default=list(_DATASETS),
         choices=_DATASETS,
-        help="RCT panels to fit (default: jsa_dc and wreb).",
+        help="RCT panel to fit (default: jsa_dc).",
     )
     parser.add_argument(
         "--out-dir",
