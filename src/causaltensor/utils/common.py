@@ -154,6 +154,7 @@ def get_fit_result_from_method(
     method_name: str,
     O: np.ndarray,
     Z: np.ndarray,
+    suggest_r: Optional[int] = None,
 ) -> Tuple[Optional[Result], Optional[str]]:
     """
     Fit one estimator and return the :class:`~causaltensor.cauest.result.Result`
@@ -169,7 +170,10 @@ def get_fit_result_from_method(
     try:
         if method_name == "DCPR":
             res = DCPanelSolver(O, Z).fit(
-                spectrum_cut=0.002, method="convex", method_non_neg=None
+                suggest_r=suggest_r,
+                spectrum_cut=0.002,
+                method="convex",
+                method_non_neg=None,
             )
         elif method_name == "MC_NNM_CV":
             Omega = 1.0 - Z
@@ -186,7 +190,9 @@ def get_fit_result_from_method(
         elif method_name == "SC":
             res = OLSSCPanelSolver(O, Z).fit()
         elif method_name == "RSC":
-            Mhat, tau = robust_synthetic_control(O, Z)
+            Mhat, tau = robust_synthetic_control(
+                O, Z, suggest_r=-1 if suggest_r is None else suggest_r
+            )
             res = Result(baseline=Mhat, tau=tau, return_tau_scalar=True)
             res.O = O
             res.Z = Z

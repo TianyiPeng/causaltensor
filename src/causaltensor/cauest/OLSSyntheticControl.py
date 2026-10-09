@@ -13,6 +13,28 @@ from causaltensor.cauest.panel_solver import PanelSolver
 from causaltensor.cauest.result import Result
 
 
+def _project_simplex(w: np.ndarray) -> np.ndarray:
+    """Euclidean projection onto ``w >= 0``, ``sum(w) = 1``."""
+    u = np.sort(w)[::-1]
+    cssv = np.cumsum(u)
+    rho = np.nonzero(u * np.arange(1, len(u) + 1) > (cssv - 1))[0][-1]
+    theta = (cssv[rho] - 1) / (rho + 1.0)
+    return np.maximum(w - theta, 0.0)
+
+
+def _solve(prob: cp.Problem, W_var: cp.Variable) -> np.ndarray:
+    """CLARABEL, then OSQP, then SCS. Later solvers are projected onto the simplex."""
+    for solver, project in ((cp.CLARABEL, False), (cp.OSQP, True), (cp.SCS, True)):
+        try:
+            prob.solve(solver=solver)
+        except cp.SolverError:
+            continue
+        if prob.status in (cp.OPTIMAL, cp.OPTIMAL_INACCURATE) and W_var.value is not None:
+            weights = np.asarray(W_var.value, dtype=float)
+            return _project_simplex(weights) if project else np.clip(weights, 0.0, None)
+    raise cp.SolverError("CLARABEL, OSQP, and SCS failed to solve the synthetic-control weights.")
+
+
 def _solve_simplex_qp(y_c: np.ndarray, y_t: np.ndarray) -> np.ndarray:
     """Solve ``min ||y_t - y_c @ W||²  s.t. W >= 0, sum(W) = 1``."""
     W_var = cp.Variable(y_c.shape[1])
@@ -20,8 +42,7 @@ def _solve_simplex_qp(y_c: np.ndarray, y_t: np.ndarray) -> np.ndarray:
         cp.Minimize(cp.sum_squares(y_t - y_c @ W_var)),
         [W_var >= 0, cp.sum(W_var) == 1],
     )
-    prob.solve(solver=cp.CLARABEL)
-    return np.clip(np.asarray(W_var.value, dtype=float), 0.0, None)
+    return _solve(prob, W_var)
 
 
 def _solve_simplex_qp_weighted(X0: np.ndarray, X1: np.ndarray,
@@ -36,8 +57,7 @@ def _solve_simplex_qp_weighted(X0: np.ndarray, X1: np.ndarray,
         cp.Minimize(cp.sum_squares(cp.multiply(sqrtV, X1 - X0 @ W_var))),
         [W_var >= 0, cp.sum(W_var) == 1],
     )
-    prob.solve(solver=cp.CLARABEL)
-    return np.clip(np.asarray(W_var.value, dtype=float), 0.0, None)
+    return _solve(prob, W_var)
 
 
 def _slsqp_minimizer(out):

@@ -66,9 +66,9 @@ def robust_synthetic_control(O, Z, suggest_r=-1):
 
     Donors are units that are never treated. A rank-``r`` approximation of the
     donor panel is built; treated units are fit by regression on pre-treatment
-    columns. If ``suggest_r == -1``, ``r`` is chosen by minimizing pre-period
-    prediction error on treated units over a grid, subject to a cumulative
-    singular-value energy cutoff.
+    columns. If ``suggest_r == -1``, ``r`` minimizes the error on the second
+    half of each treated pre-period, with weights fit only on the first half.
+    The search stops when the remaining singular-value mass falls below 3%.
 
     Parameters
     ----------
@@ -119,40 +119,34 @@ def robust_synthetic_control(O, Z, suggest_r=-1):
     if len(s) == 0:
         raise ValueError("SVD produced no singular values (empty donor panel?).")
 
-    def recover(r):
+    def donor_fit(r, end_times):
         r = int(min(max(r, 1), len(s)))
         Mnew = (u[:, :r] * s[:r]).dot(vh[:r, :])
         Mhat = np.zeros_like(O)
         Mhat[donor_units, :] = Mnew
-
-        cv_mse = 0.0
         for idx, i in enumerate(treat_units):
-            start_i = int(starting_times[idx])
-            # Fit treated unit i using only its own pre-period.
-            Mminus_i = Mnew[:, :start_i]                          # (n_donor, T0_i)
-            coef_i = np.linalg.pinv(Mminus_i.T).dot(O[i, :start_i])  # (n_donor,)
-            Mhat[i, :] = Mnew.T.dot(coef_i)                       # (T,)
-            # CV MSE: second half of this unit's pre-period.
-            valid_start_i = int(start_i / 2 + 0.5)
-            cv_mse += np.sum(
-                (Mhat[i, valid_start_i:start_i] - O[i, valid_start_i:start_i]) ** 2
-            )
-
-        return cv_mse, Mhat
+            end = int(end_times[idx])
+            coef = np.linalg.pinv(Mnew[:, :end].T).dot(O[i, :end])
+            Mhat[i, :] = Mnew.T.dot(coef)
+        return Mhat
 
     if suggest_r == -1:
         energy = float(np.sum(s))
         if energy <= 0:
             raise ValueError("Sum of singular values is zero; cannot run rank CV.")
 
+        train_ends = np.array([int(st / 2 + 0.5) for st in starting_times])
         opt_mse = np.inf
-        opt_r = min(2, len(s))
-
-        # Cross-validation over r: minimise total pre-period MSE across treated units.
+        opt_r = 1
         for r in range(1, len(s)):
             if (np.sum(s[r - 1:]) / energy) <= 0.03:
                 break
-            mse, _ = recover(r)
+            fitted = donor_fit(r, train_ends)
+            mse = 0.0
+            for idx, i in enumerate(treat_units):
+                train_end = int(train_ends[idx])
+                start_i = int(starting_times[idx])
+                mse += np.sum((fitted[i, train_end:start_i] - O[i, train_end:start_i]) ** 2)
             if mse < opt_mse:
                 opt_mse = mse
                 opt_r = r
@@ -163,7 +157,7 @@ def robust_synthetic_control(O, Z, suggest_r=-1):
                 f"suggest_r must be in [1, {len(s)}] or -1 for CV; got {suggest_r!r}."
             )
 
-    _, mhat = recover(opt_r)
+    mhat = donor_fit(opt_r, starting_times)
     tau = np.sum(Z * (O - mhat)) / np.sum(Z)
     return mhat, tau
 
