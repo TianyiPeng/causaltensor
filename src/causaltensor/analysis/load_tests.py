@@ -31,8 +31,6 @@ import time
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Sequence, Tuple
 
-import matplotlib.pyplot as plt
-from matplotlib.patches import Rectangle
 import numpy as np
 import pandas as pd
 import psutil
@@ -513,157 +511,6 @@ def summarize_by_estimator(df_agg: pd.DataFrame) -> pd.DataFrame:
     df_summary.reset_index(drop=True, inplace=True)
     return df_summary
 
-
-def _pivot_ordered(
-    df: pd.DataFrame,
-    *,
-    metric: str,
-    methods_order: Sequence[str],
-) -> Dict[str, pd.DataFrame]:
-    pivots: Dict[str, pd.DataFrame] = {}
-    for m in methods_order:
-        chunk = df[df["method"] == m]
-        pivot = chunk.pivot_table(index="N", columns="T", values=metric, aggfunc="first")
-        pivot = pivot.reindex(sorted(pivot.index))
-        pivot = pivot.reindex(columns=sorted(pivot.columns))
-        pivots[m] = pivot
-    return pivots
-
-
-def _aligned_int_grid(ptab: pd.DataFrame, counts: pd.DataFrame) -> np.ndarray:
-    aligned = counts.reindex(index=ptab.index, columns=ptab.columns)
-    return np.nan_to_num(aligned.values, nan=0.0).astype(int)
-
-
-def _draw_load_test_failure_overlays(
-    ax: plt.Axes,
-    subplot_col: int,
-    n_timeout: np.ndarray,
-    n_memlim: np.ndarray,
-    n_err: np.ndarray,
-) -> None:
-    """
-    Overlay white cells so timeout vs RSS-cap vs other failures read across panels.
-
-    * Time ``(0)``: dotted white if timeout; solid white if only RSS-cap trials.
-    * RSS ``(1)``: dotted if RSS cap; solid white if only timeouts.
-    * Relative error ``(2)``: solid white if timeout or RSS-cap; dotted white if-only
-      **other** trial errors (status ``error``); no overlay if ``n_ok`` only.
-    """
-    n_rows, n_cols = n_timeout.shape
-
-    def add_cell(c: int, r: int, *, hatched: bool) -> None:
-        kw: Dict[str, Any] = dict(
-            xy=(c - 0.5, r - 0.5),
-            width=1.0,
-            height=1.0,
-            facecolor="white",
-            zorder=10,
-        )
-        if hatched:
-            kw["edgecolor"] = "0.45"
-            kw["hatch"] = "..."
-            kw["linewidth"] = 0.0
-        else:
-            kw["edgecolor"] = "none"
-            kw["linewidth"] = 0
-        ax.add_patch(Rectangle(**kw))
-
-    for r in range(n_rows):
-        for c in range(n_cols):
-            nt, nm, ne = int(n_timeout[r, c]), int(n_memlim[r, c]), int(n_err[r, c])
-            if subplot_col == 0:
-                if nt > 0:
-                    add_cell(c, r, hatched=True)
-                elif nm > 0:
-                    add_cell(c, r, hatched=False)
-            elif subplot_col == 1:
-                if nm > 0:
-                    add_cell(c, r, hatched=True)
-                elif nt > 0:
-                    add_cell(c, r, hatched=False)
-            else:
-                if nt > 0 or nm > 0:
-                    add_cell(c, r, hatched=False)
-                elif ne > 0:
-                    add_cell(c, r, hatched=True)
-
-
-def plot_load_test_heatmap_figure(
-    df_agg: pd.DataFrame,
-    methods: Sequence[str],
-    *,
-    vmin_time: Optional[float] = None,
-    vmax_time: Optional[float] = None,
-    vmin_rss: Optional[float] = None,
-    vmax_rss: Optional[float] = None,
-    vmax_rel_err: Optional[float] = None,
-) -> plt.Figure:
-    methods_list = list(methods)
-    nrows = len(methods_list)
-    fig, axes = plt.subplots(nrows, 3, figsize=(10.5, 2.0 * nrows + 1.0))
-    if nrows == 1:
-        axes = np.array([axes])
-    colnames = ["Wall time (median, s)", "RSS fit peak (median, MiB)", "Relative ATT error (median)"]
-
-    time_pv = _pivot_ordered(df_agg, metric="time_s", methods_order=methods_list)
-    rss_pv = _pivot_ordered(df_agg, metric="rss_fit_peak_mb", methods_order=methods_list)
-    err_pv = _pivot_ordered(df_agg, metric="relative_error", methods_order=methods_list)
-    timeout_pv = _pivot_ordered(df_agg, metric="n_timeout", methods_order=methods_list)
-    mem_pv = _pivot_ordered(df_agg, metric="n_memory_limit", methods_order=methods_list)
-    nerr_pv = _pivot_ordered(df_agg, metric="n_err", methods_order=methods_list)
-
-    t_vals = df_agg["time_s"].values.astype(float)
-    r_vals = df_agg["rss_fit_peak_mb"].values.astype(float)
-    e_vals = df_agg["relative_error"].replace([np.inf, -np.inf], np.nan).values.astype(float)
-
-    vmin_time = float(np.nanpercentile(t_vals, 5)) if vmin_time is None else vmin_time
-    vmax_time = float(np.nanpercentile(t_vals, 98)) if vmax_time is None else vmax_time
-    vmin_rss = float(np.nanpercentile(r_vals, 5)) if vmin_rss is None else vmin_rss
-    vmax_rss = float(np.nanpercentile(r_vals, 98)) if vmax_rss is None else vmax_rss
-
-    if vmax_rel_err is None:
-        fin = e_vals[np.isfinite(e_vals)]
-        vmax_rel_err = float(np.nanpercentile(fin, 95)) if fin.size > 0 else 1.0
-
-    for i, method in enumerate(methods_list):
-        grids = [(time_pv, plt.cm.viridis, vmin_time, vmax_time), (rss_pv, plt.cm.plasma, vmin_rss, vmax_rss), (err_pv, plt.cm.magma, 0.0, vmax_rel_err)]
-        for j, (pmap, cmap, v0, v1) in enumerate(grids):
-            ax = axes[i, j]
-            mat = pmap[method].values.astype(float)
-            masked = np.ma.array(mat, mask=np.isnan(mat))
-            im = ax.imshow(masked, aspect="auto", origin="upper", cmap=cmap, vmin=v0, vmax=v1, interpolation="nearest")
-            ptab = pmap[method]
-            nt_m = _aligned_int_grid(ptab, timeout_pv[method])
-            nl_m = _aligned_int_grid(ptab, mem_pv[method])
-            ne_m = _aligned_int_grid(ptab, nerr_pv[method])
-            _draw_load_test_failure_overlays(ax, j, nt_m, nl_m, ne_m)
-            ax.set_xticks(range(len(ptab.columns)))
-            ax.set_xticklabels([str(c) for c in ptab.columns], rotation=45, ha="right", fontsize=8)
-            ax.set_yticks(range(len(ptab.index)))
-            ax.set_yticklabels([str(r) for r in ptab.index], fontsize=8)
-            if i == 0:
-                ax.set_title(colnames[j], fontsize=9)
-            if j == 0:
-                ax.set_ylabel(method, fontsize=9, rotation=25, ha="right")
-            fig.colorbar(im, ax=ax, fraction=0.046, pad=0.04)
-
-    fig.suptitle("Load test (Windows): median time, rss_fit_peak_mb, relative error over trials", fontsize=12, y=1.01)
-    fig.tight_layout(rect=(0.0, 0.035, 1.0, 1.0))
-    fig.text(
-        0.5,
-        0.008,
-        "Relative error: dotted hatch = trial error(s), no timeout/RSS-cap for that cell. "
-        "Dotted elsewhere = timeout (wall clock) / RSS-cap (RSS). Solid white masks cross-metrics for timeout/RSS-cap "
-        "and relative error when timed out or capped.",
-        ha="center",
-        va="bottom",
-        fontsize=7,
-        color="0.35",
-    )
-    return fig
-
-
 def print_load_test_table(df_agg: pd.DataFrame) -> None:
     tabs = [
         ("Wall-clock time (median)", "time_s", "s"),
@@ -684,8 +531,6 @@ def save_load_test_bundle(
     df_trials: pd.DataFrame,
     output_dir: Optional[Path] = None,
     prefix: str = "load_test",
-    *,
-    save_plots: bool = True,
 ) -> Dict[str, Path]:
     out = Path(output_dir) if output_dir else _RESULTS_DIR
     out.mkdir(parents=True, exist_ok=True)
@@ -703,14 +548,6 @@ def save_load_test_bundle(
     df_agg.to_csv(paths["cells"], index=False)
     df_summary.to_csv(paths["summary"], index=False)
 
-    if save_plots:
-        order = [m for m in DEFAULT_METHODS if m in set(df_agg["method"].unique())]
-        order += sorted(set(df_agg["method"].unique()) - set(order))
-        fig = plot_load_test_heatmap_figure(df_agg, order)
-        paths["heatmaps"] = out / f"{base}_heatmaps.png"
-        fig.savefig(paths["heatmaps"], dpi=150, bbox_inches="tight")
-        plt.close(fig)
-
     print(f"Load test bundle saved under {out}:")
     for k, p in paths.items():
         print(f"  {k}: {p}")
@@ -721,12 +558,10 @@ def save_load_test(
     df: pd.DataFrame,
     output_dir: Optional[Path] = None,
     prefix: str = "load_test",
-    *,
-    save_plots: bool = True,
 ) -> Path:
-    """If ``trial`` column present, write trials/cells/summary(+PNG); else one legacy CSV."""
+    """If ``trial`` column present, write trials/cells/summary; else one legacy CSV."""
     if "trial" in df.columns:
-        return save_load_test_bundle(df, output_dir=output_dir, prefix=prefix, save_plots=save_plots)["cells"]
+        return save_load_test_bundle(df, output_dir=output_dir, prefix=prefix)["cells"]
 
     out = Path(output_dir) if output_dir else _RESULTS_DIR
     out.mkdir(parents=True, exist_ok=True)
@@ -771,7 +606,6 @@ def main(argv: Optional[Sequence[str]] = None) -> Tuple[pd.DataFrame, pd.DataFra
     )
     parser.add_argument("--out-dir", default=None, metavar="DIR")
     parser.add_argument("--no-save", action="store_true")
-    parser.add_argument("--no-plot", action="store_true")
 
     args = parser.parse_args(argv)
 
@@ -793,7 +627,7 @@ def main(argv: Optional[Sequence[str]] = None) -> Tuple[pd.DataFrame, pd.DataFra
     print("\n=== Summary per estimator ===\n" + summarize_by_estimator(df_agg).to_string(index=False))
 
     if not args.no_save:
-        save_load_test_bundle(df_trials, output_dir=args.out_dir, save_plots=not args.no_plot)
+        save_load_test_bundle(df_trials, output_dir=args.out_dir)
 
     return df_trials, df_agg
 

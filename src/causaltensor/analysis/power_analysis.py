@@ -1,6 +1,7 @@
 """
 Power analysis pipeline on a built-in dataset: A/A null simulations, empirical
-thresholds, Monte Carlo power, plots, and CSVs.
+thresholds, Monte Carlo power, and CSVs. Figures are drawn by
+``causaltensor.analysis.plot``.
 
 All outputs go under one folder per dataset:
 
@@ -26,7 +27,6 @@ import logging
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Sequence, Tuple
 
-import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
 
@@ -34,12 +34,10 @@ from causaltensor.datasets.dataset_loader import load_dataset
 from causaltensor.semi_synthetic.aa_test import (
     DEFAULT_METHODS,
     VALID_PATTERNS,
-    plot_aa_null_figure,
     run_aa_test,
 )
 from causaltensor.semi_synthetic.empirical_power import (
     empirical_critical_abs_tau,
-    plot_empirical_power_figure,
     run_empirical_power_grid,
 )
 from causaltensor.utils.panel import default_raw_datasets_path, prepare_panel
@@ -87,7 +85,6 @@ def run_power_analysis_for_baseline(
     seed_null: int = 0,
     seed_power: int = 1,
     verbose: bool = True,
-    plot_dpi: int = 120,
 ) -> Dict[str, Any]:
     """
     Run null A/A, save CSVs, empirical thresholds, power grid, both plots.
@@ -162,20 +159,6 @@ def run_power_analysis_for_baseline(
     df_power.to_csv(path_power, index=False)
     logger.info("Wrote %s", path_power)
 
-    fig_null, _ = plot_aa_null_figure(
-        df_null, grid_points=max(128, min(512, 8 * n_trials_null))
-    )
-    path_fig_null = output_dir / f"{stem}null_tau_distribution.png"
-    fig_null.savefig(path_fig_null, dpi=plot_dpi, bbox_inches="tight")
-    plt.close(fig_null)
-    logger.info("Wrote %s", path_fig_null)
-
-    fig_p, _ = plot_empirical_power_figure(df_power)
-    path_fig_p = output_dir / f"{stem}power_curves.png"
-    fig_p.savefig(path_fig_p, dpi=plot_dpi, bbox_inches="tight")
-    plt.close(fig_p)
-    logger.info("Wrote %s", path_fig_p)
-
     return {
         "output_dir": output_dir,
         "df_null": df_null,
@@ -185,12 +168,8 @@ def run_power_analysis_for_baseline(
             "null_trials": path_null,
             "empirical_thresholds": path_thr,
             "empirical_power": path_power,
-            "null_tau_distribution_png": path_fig_null,
-            "power_curves_png": path_fig_p,
         },
     }
-
-
 def run_power_analysis(
     dataset_name: str,
     *,
@@ -204,7 +183,6 @@ def run_power_analysis(
     alpha: float = 0.05,
     seed: int = 0,
     verbose: bool = True,
-    plot_dpi: int = 120,
 ) -> List[Dict[str, Any]]:
     """
     Full pipeline for each ``baseline_type``.
@@ -273,7 +251,6 @@ def run_power_analysis(
                 seed_null=seed + b_idx * 10_007,
                 seed_power=seed + b_idx * 10_007 + 1,
                 verbose=verbose,
-                plot_dpi=plot_dpi,
             )
             results.append(out)
         except Exception as exc:
@@ -365,12 +342,6 @@ def main(argv: Optional[Sequence[str]] = None) -> List[Dict[str, Any]]:
             "DEFAULT_RELATIVE_EFFECTS). Example: --rel-effects 0 0.05 0.1 0.2"
         ),
     )
-    parser.add_argument(
-        "--plot-dpi",
-        type=int,
-        default=120,
-        help="PNG resolution (default: 120).",
-    )
     args = parser.parse_args(argv)
 
     root = Path(args.out_root) if args.out_root else default_run_root(args.dataset)
@@ -388,7 +359,6 @@ def main(argv: Optional[Sequence[str]] = None) -> List[Dict[str, Any]]:
         alpha=args.alpha,
         seed=args.seed,
         verbose=True,
-        plot_dpi=args.plot_dpi,
     )
     for o in outs:
         print("\nSaved:")

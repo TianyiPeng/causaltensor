@@ -5,10 +5,9 @@ An A/A test checks estimators on a **fixed baseline** panel ``M`` (true effect z
 with **independent random synthetic** treatment masks ``Z_syn`` each trial — Monte
 Carlo variation comes from assignment geometry, not from many field experiments.
 
-Use :func:`plot_aa_null_figure` (this module) for the null KDE figure, and
-:func:`run_empirical_power_grid` / :func:`plot_empirical_power_figure` in
-``causaltensor.semi_synthetic.empirical_power`` for empirical critical values
-and power curves (TestOps-style workflow without ad-hoc |τ|/std(M) cutoffs).
+Empirical critical values and power curves live in
+``causaltensor.semi_synthetic.empirical_power``. Figures are drawn by
+``causaltensor.analysis.plot``.
 
 Quickstart
 ----------
@@ -23,7 +22,7 @@ Quickstart
 
 from __future__ import annotations
 
-from typing import Dict, List, Optional, Tuple
+from typing import Dict, List, Optional
 
 import numpy as np
 import pandas as pd
@@ -36,31 +35,6 @@ from causaltensor.utils.treatment_patterns import Z_adaptive, Z_block, Z_iid, Z_
 from causaltensor.utils.common import get_tau_from_method, treated_states_and_starts_from_Z
 
 VALID_PATTERNS: List[str] = ["IID", "Block", "Staggered", "Adaptive"]
-
-# Saturated line colors for multi-method overlays (distinct on white backgrounds).
-_METHOD_LINE_COLORS: Tuple[str, ...] = (
-    "#00B0F6",
-    "#FF9900",
-    "#00BF7D",
-    "#E76BF3",
-    "#F8766D",
-    "#FFC107",
-    "#76D7EA",
-    "#D39200",
-)
-
-
-def _power_figure_style() -> None:
-    import matplotlib.pyplot as plt
-
-    plt.style.use("seaborn-v0_8-whitegrid")
-
-
-def method_line_colors(n_methods: int) -> List[str]:
-    """Return ``n_methods`` distinct line colors for power / null plots."""
-    n = max(int(n_methods), 1)
-    return [_METHOD_LINE_COLORS[i % len(_METHOD_LINE_COLORS)] for i in range(n)]
-
 
 DEFAULT_METHODS: Dict[str, List[str]] = {
     "DCPR": ["IID", "Block", "Staggered", "Adaptive"],
@@ -297,88 +271,3 @@ def _print_aa_summary(df: pd.DataFrame) -> None:
         )
 
     print(sep)
-
-
-def _kde_density_curve(
-    x: np.ndarray,
-    x_grid: np.ndarray,
-):
-    """
-    Evaluate a Gaussian KDE density at ``x_grid``. Returns None if KDE is not defined.
-    """
-    from scipy.stats import gaussian_kde
-
-    x = np.asarray(x, dtype=float)
-    x = x[np.isfinite(x)]
-    if x.size < 2:
-        return None
-    if np.std(x, ddof=1) < 1e-14 * (1.0 + abs(np.mean(x))):
-        return None
-    kde = gaussian_kde(x)
-    return kde(x_grid)
-
-
-def plot_aa_null_figure(
-    null_df: pd.DataFrame,
-    *,
-    grid_points: int = 256,
-    figsize: Tuple[float, float] = (7.2, 3.6),
-):
-    """
-    KDE (line only) of ``tau_hat`` under the null for each pattern (subplot) and
-    method (overlaid curves, no fill).
-
-    Expects columns ``method``, ``pattern``, ``tau_hat`` as returned by
-    :func:`run_aa_test`. Requires ``matplotlib`` and ``scipy``.
-    """
-    import matplotlib.pyplot as plt
-
-    _power_figure_style()
-    patterns = list(dict.fromkeys(null_df["pattern"].tolist()))
-    methods = list(dict.fromkeys(null_df["method"].tolist()))
-    n_p = len(patterns)
-    min_h_per_panel = 3.0
-    fig_h = max(figsize[1], min_h_per_panel * n_p)
-    fig, axes = plt.subplots(n_p, 1, figsize=(figsize[0], fig_h), squeeze=False)
-    colors = method_line_colors(len(methods))
-    n_gp = max(32, int(grid_points))
-
-    for ax, pat in zip(axes.flat, patterns):
-        sub = null_df[null_df["pattern"] == pat]
-        all_tau = sub["tau_hat"].to_numpy(dtype=float)
-        all_tau = all_tau[np.isfinite(all_tau)]
-        if all_tau.size == 0:
-            ax.axvline(0.0, color="k", linestyle="--", linewidth=0.9)
-            ax.set_title(f"Null distribution — pattern = {pat}")
-            ax.set_xlabel(r"$\hat\tau$")
-            ax.set_ylabel("density")
-            continue
-        lo, hi = float(np.min(all_tau)), float(np.max(all_tau))
-        span = hi - lo
-        pad = 0.08 * span if span > 0 else max(abs(lo), abs(hi), 1.0) * 0.08
-        x_grid = np.linspace(lo - pad, hi + pad, n_gp)
-
-        for k, meth in enumerate(methods):
-            x = sub[sub["method"] == meth]["tau_hat"].to_numpy(dtype=float)
-            y = _kde_density_curve(x, x_grid)
-            if y is None:
-                continue
-            ax.plot(
-                x_grid,
-                y,
-                color=colors[k % len(colors)],
-                label=meth,
-                linewidth=2.0,
-            )
-        ax.axvline(0.0, color="k", linestyle="--", linewidth=0.9)
-        ax.set_title(f"Null distribution — pattern = {pat}")
-        ax.set_xlabel(r"$\hat\tau$")
-        ax.set_ylabel("density")
-        ax.legend(fontsize=8, loc="upper right", framealpha=0.92)
-
-    fig.suptitle(
-        r"A/A: $\hat\tau$ when true effect is 0 (fixed $M$, random $Z_\mathrm{syn}$)",
-        fontsize=12,
-    )
-    fig.tight_layout()
-    return fig, axes

@@ -66,9 +66,12 @@ def inject_treatment_centered(M, Z, *,
                               treatment_level=0.2,
                               sigma_unit_scale=0.8,
                               sigma_time_scale=0.2,
-                              rng=None):
+                              rng=None,
+                              baseline_dependent=False):
     """
-    Inject treatment with unit- and time-heterogeneity, centered over treated cells:
+    Inject treatment, centered so the ATT over treated cells equals tau*.
+
+    Default (additive heterogeneity):
         O = M + (tau* + delta_i + eta_t) ∘ Z
 
     - tau* = mean(|M|) * treatment_level
@@ -77,15 +80,33 @@ def inject_treatment_centered(M, Z, *,
     - Both delta_i and eta_t are re-centered (weighted by treated counts) so that
       the ATT over treated cells equals tau*
 
+    If baseline_dependent is True, heterogeneity comes from |M| instead of
+    unit and time shocks (sigma_unit_scale and sigma_time_scale are ignored):
+        tau_it = gamma * |M_it|
+        gamma  = tau* / mean(|M_it| over treated cells)
+
+    gamma is one panel-wide scale. Each cell's effect differs with |M_it|,
+    and can sit above or below tau*. Dividing by the treated-cell mean of
+    |M|, rather than the panel mean, keeps the ATT equal to tau* when the
+    treated cells are not a random slice of M.
+
     Returns:
         O        : observed panel
         tau_star : intended average effect (ground truth)
     """
+    tau_star = np.mean(np.abs(M)) * treatment_level
+    if baseline_dependent:
+        treated = np.asarray(Z) != 0
+        # Scale |M| so the treated-cell average equals tau*, with no delta_i or eta_t
+        gamma = tau_star / np.mean(np.abs(M[treated]))
+        Tmat = gamma * np.abs(M)
+        O = M + Tmat * Z
+        att_true = (Tmat * Z).sum() / treated.sum()
+        assert np.isclose(att_true, tau_star)
+        return O, tau_star
+
     rng = np.random.default_rng(rng)
     n, T = M.shape
-
-    # Base effect and heterogeneity scales
-    tau_star = np.mean(np.abs(M)) * treatment_level
     sigma_delta = sigma_unit_scale * abs(tau_star)
     sigma_eta   = sigma_time_scale * abs(tau_star)
 

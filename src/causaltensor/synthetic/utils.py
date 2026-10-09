@@ -86,6 +86,63 @@ def add_noise(M, noise_scale=1.0, rng=None):
     return M + rng.normal(0.0, noise_scale, size=M.shape)
 
 
+def add_noise_ar1(M, noise_scale=1.0, rho=0.5, rng=None):
+    """
+    Add Gaussian AR(1) noise with marginal variance ``noise_scale**2``.
+
+    ``eps[:, t] = rho * eps[:, t-1] + sqrt(1 - rho**2) * noise_scale * u[:, t]``,
+    with ``u`` standard normal and ``eps[:, 0] ~ N(0, noise_scale)``.
+
+    Parameters
+    ----------
+    M : np.ndarray
+        Baseline panel.
+    noise_scale : float, default 1.0
+        Marginal standard deviation of the noise.
+    rho : float, default 0.5
+        Lag-1 autocorrelation.
+    rng : int or np.random.Generator, optional
+        Seed or Generator for reproducibility.
+
+    Returns
+    -------
+    O : np.ndarray, same shape as M
+    """
+    rng = np.random.default_rng(rng)
+    n, T = M.shape
+    u = rng.normal(0.0, 1.0, size=(n, T))
+    eps = np.empty((n, T))
+    eps[:, 0] = noise_scale * u[:, 0]
+    innov = noise_scale * np.sqrt(1.0 - rho ** 2)
+    for t in range(1, T):
+        eps[:, t] = rho * eps[:, t - 1] + innov * u[:, t]
+    return M + eps
+
+
+def add_noise_student_t(M, noise_scale=1.0, df=3, rng=None):
+    """
+    Add Student-t noise rescaled to variance ``noise_scale**2``.
+
+    Parameters
+    ----------
+    M : np.ndarray
+        Baseline panel.
+    noise_scale : float, default 1.0
+        Standard deviation of the noise after rescaling.
+    df : int, default 3
+        Degrees of freedom. Must be greater than 2 so the variance is finite.
+    rng : int or np.random.Generator, optional
+        Seed or Generator for reproducibility.
+
+    Returns
+    -------
+    O : np.ndarray, same shape as M
+    """
+    rng = np.random.default_rng(rng)
+    raw = rng.standard_t(df, size=M.shape)
+    return M + raw * noise_scale * np.sqrt((df - 2) / df)
+
+
 def add_noise_poisson(M, rng=None):
     """
     Add Poisson noise: O[i,t] ~ Poisson(M[i,t]).

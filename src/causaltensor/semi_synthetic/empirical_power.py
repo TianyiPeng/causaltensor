@@ -9,8 +9,6 @@ Empirical rejection thresholds and Monte Carlo power (fixed baseline :math:`M`, 
 1. Empirical threshold :math:`c`: :math:`(1-\alpha)` quantile of :math:`|\hat\tau|` using null draws
    from :func:`~causaltensor.semi_synthetic.aa_test.run_aa_test`.
 2. Power grid: inject :math:`O = M + \delta\,\mathrm{mean}(|M|)\, Z_{\mathrm{syn}}`, reject if :math:`|\hat\tau|>c`.
-
-For the **null distribution plot** (KDE) of :math:`\hat\tau`, see :func:`~causaltensor.semi_synthetic.aa_test.plot_aa_null_figure`.
 """
 
 from __future__ import annotations
@@ -25,8 +23,6 @@ from causaltensor.semi_synthetic.aa_test import (
     VALID_PATTERNS,
     _normalise_methods,
     draw_synthetic_z,
-    method_line_colors,
-    _power_figure_style,
 )
 from causaltensor.semi_synthetic.utils import build_baseline_M
 from causaltensor.utils.common import get_tau_from_method, treated_states_and_starts_from_Z
@@ -189,67 +185,3 @@ def run_empirical_power_grid(
                     )
 
     return thr_df, pd.DataFrame(power_rows)
-
-
-def plot_empirical_power_figure(
-    power_df: pd.DataFrame,
-    *,
-    figsize: Tuple[float, float] = (7.2, 3.6),
-):
-    """
-    Power vs ``relative_effect`` for each pattern (subplot), lines per method.
-
-    Expects a frame like the second return of :func:`run_empirical_power_grid`.
-    Requires ``matplotlib``.
-    """
-    import matplotlib.pyplot as plt
-
-    _power_figure_style()
-    patterns = list(dict.fromkeys(power_df["pattern"].tolist()))
-    methods = list(dict.fromkeys(power_df["method"].tolist()))
-    n_p = len(patterns)
-    min_h_per_panel = 3.0
-    fig_h = max(figsize[1], min_h_per_panel * n_p)
-    fig, axes = plt.subplots(n_p, 1, figsize=(figsize[0], fig_h), squeeze=False)
-    colors = method_line_colors(len(methods))
-
-    for ax, pat in zip(axes.flat, patterns):
-        sub = power_df[power_df["pattern"] == pat]
-        for k, meth in enumerate(methods):
-            s2 = sub[sub["method"] == meth].sort_values("relative_effect")
-            if s2.empty:
-                continue
-            color = colors[k % len(colors)]
-            ax.fill_between(
-                s2["relative_effect"],
-                s2["ci_low"],
-                s2["ci_high"],
-                color=color,
-                alpha=0.15,
-                linewidth=0,
-            )
-            ax.plot(
-                s2["relative_effect"],
-                s2["power"],
-                marker="o",
-                ms=4,
-                linewidth=1.85,
-                color=color,
-                label=meth,
-            )
-        ax.set_ylim(-0.05, 1.05)
-        ax.axhline(0.8, color="gray", linestyle=":", linewidth=0.9)
-        ax.set_title(f"Empirical power — pattern = {pat}")
-        ax.set_xlabel(
-            r"relative effect $\delta$ (inject $\delta \cdot \mathrm{mean}(|M|)$ on treated cells)"
-        )
-        ax.set_ylabel("power")
-        ax.legend(fontsize=8, loc="lower right", framealpha=0.92)
-
-    fig.suptitle(
-        r"Reject $H_0:\tau=0$ when $|\hat\tau|>c$; "
-        r"$c$ = empirical $(1-\alpha)$ quantile of $|\hat\tau|$ under null",
-        fontsize=11,
-    )
-    fig.tight_layout()
-    return fig, axes

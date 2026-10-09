@@ -17,15 +17,12 @@ import logging
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Sequence, Tuple
 
-import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
 
 from causaltensor.semi_synthetic.aa_test import (
     DEFAULT_METHODS,
     VALID_PATTERNS,
-    _power_figure_style,
-    method_line_colors,
 )
 from causaltensor.synthetic.dgp import generate
 from causaltensor.utils.common import get_tau_from_method
@@ -185,76 +182,6 @@ def run_ablation_grid(
 
     return pd.DataFrame(rows)
 
-
-def plot_ablation_figure(df: pd.DataFrame) -> plt.Figure:
-    """1×4 line plots: x = ablated parameter, y = mean relative error, lines = estimator."""
-    if df.empty:
-        raise ValueError("empty dataframe for plotting")
-
-    _power_figure_style()
-
-    key_order = list(DEFAULT_METHODS.keys())
-    order = sorted(
-        df["method"].unique(),
-        key=lambda m: key_order.index(m) if m in key_order else len(key_order),
-    )
-    colors = method_line_colors(len(order))
-
-    # (axis_key, title line 1, x-axis label, grid)
-    axes_config: List[Tuple[str, str, str, Tuple[Any, ...]]] = [
-        ("rank", r"Rank $r$", r"$r$", RANK_GRID),
-        ("sigma_unit", r"Unit heterogeneity $\delta$ ($\times |\tau^*|$)", r"$\delta$", SIGMA_UNIT_GRID),
-        ("sigma_time", r"Time heterogeneity $\eta$ ($\times |\tau^*|$)", r"$\eta$", SIGMA_TIME_GRID),
-        ("noise", r"Noise $\sigma$", r"$\sigma$", NOISE_GRID),
-    ]
-
-    fig, axes = plt.subplots(1, 4, figsize=(14, 4.25))
-    for ax, (key, title, xlabel, grid) in zip(axes, axes_config):
-        sub = df.loc[df["axis"] == key]
-        agg = (
-            sub.groupby(["axis_value", "method"])["error"]
-            .mean()
-            .reset_index()
-        )
-        for i, method in enumerate(order):
-            g = agg.loc[agg["method"] == method]
-            if g.empty:
-                continue
-            xs = g["axis_value"].to_numpy()
-            ys = g["error"].to_numpy()
-            pos = {float(v): j for j, v in enumerate(grid)}
-            idx = np.argsort([pos.get(float(x), 0) for x in xs])
-            ax.plot(
-                xs[idx],
-                ys[idx],
-                marker="o",
-                ms=4,
-                linewidth=1.85,
-                label=method,
-                color=colors[i % len(colors)],
-            )
-        held = _held_defaults_caption(key)
-        ax.set_title(f"{title}\n{held}", fontsize=9, linespacing=1.2)
-        ax.set_xlabel(xlabel)
-        ax.set_ylabel("Mean relative error")
-
-    handles, labels = axes[0].get_legend_handles_labels()
-    if handles:
-        fig.legend(
-            handles,
-            labels,
-            loc="lower center",
-            ncol=min(7, len(labels)),
-            bbox_to_anchor=(0.5, -0.02),
-            framealpha=0.92,
-            fontsize=8,
-        )
-
-    fig.suptitle("Synthetic DGP ablations", fontsize=11)
-    fig.tight_layout(rect=[0.0, 0.08, 1.0, 0.92])
-    return fig
-
-
 def run_and_save(
     output_dir: Optional[Path] = None,
     *,
@@ -265,7 +192,6 @@ def run_and_save(
     trials: int = 30,
     seed: int = 0,
     methods: Optional[Sequence[str]] = None,
-    plot_dpi: int = 120,
     verbose: bool = True,
 ) -> Dict[str, Any]:
     out = Path(output_dir) if output_dir else default_output_dir()
@@ -295,16 +221,10 @@ def run_and_save(
     agg.to_csv(path_agg, index=False)
     logger.info("Wrote %s", path_agg)
 
-    fig = plot_ablation_figure(df)
-    path_fig = out / f"{stem}.png"
-    fig.savefig(path_fig, dpi=plot_dpi, bbox_inches="tight")
-    plt.close(fig)
-    logger.info("Wrote %s", path_fig)
-
     return {
         "df": df,
         "summary": agg,
-        "paths": {"trials": path_csv, "summary": path_agg, "figure": path_fig},
+        "paths": {"trials": path_csv, "summary": path_agg},
     }
 
 
@@ -341,7 +261,6 @@ def main(argv: Optional[Sequence[str]] = None) -> Dict[str, Any]:
         choices=tuple(DEFAULT_METHODS.keys()),
         help="Estimator keys (default: all valid for the chosen pattern).",
     )
-    parser.add_argument("--plot-dpi", type=int, default=120, help="PNG resolution (default: 120).")
     args = parser.parse_args(list(argv) if argv is not None else None)
 
     return run_and_save(
@@ -353,7 +272,6 @@ def main(argv: Optional[Sequence[str]] = None) -> Dict[str, Any]:
         trials=args.trials,
         seed=args.seed,
         methods=args.methods,
-        plot_dpi=args.plot_dpi,
         verbose=True,
     )
 
