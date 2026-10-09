@@ -109,9 +109,34 @@ python semi_synthetic.py dunnhumby --treatment-patterns "Adaptive,IID"
 | `semi_synthetic_control_results_detailed.csv` | All Monte Carlo trials |
 | `semi_synthetic_control_results_aggregated.csv` | Per `(method, pattern, level)`: mean relative error, signed bias, RMSE, error quantiles, successful runs |
 
+### 3. Heterogeneous effects (CATE)
+
+PWT only, Block assignment, one treatment level. The baseline is the same control-panel `M` as the ATT benchmark. Unit effects are a fixed linear function of standardized `hc`, `csh_i`, and `openness`, recentered on the treated units so their average is still `tau*`. Each estimator is scored from the unit effects implied by its fitted untreated surface.
+
+```bash
+python -m causaltensor.analysis.cate
+```
+
+| Setting | Value |
+|---------|-------|
+| Dataset | `pwt` |
+| Pattern | `Block` |
+| Treatment level | `0.1` |
+| Trials | `100` |
+| Covariates | `hc`, `csh_i`, `openness` |
+| Coefficients | `1, 0.5, -0.5` on `hc`, `csh_i`, `openness`; heterogeneity scale `gamma = 1` |
+
+**Outputs** (`results/cate/`):
+
+| File | Contents |
+|------|----------|
+| `cate_pwt_block_delta0.1_trials100_metrics.csv` | Per trial and method: PEHE and correlation |
+| `cate_pwt_block_delta0.1_trials100_gates.csv` | Per trial, method, and covariate group: true and estimated GATE |
+| `cate_pwt_block_delta0.1_trials100.png` | PEHE–correlation scatter and group-effect panel (`python -m causaltensor.analysis.plot`) |
+
 ---
 
-### 3. Power analysis
+### 4. Power analysis
 
 A/A null simulations, empirical `|τ|` thresholds, and Monte Carlo power over a grid of relative effects δ.
 
@@ -143,7 +168,7 @@ With `--baseline control`, filenames use the `control_` prefix when multiple bas
 
 ---
 
-### 4. Synthetic DGP ablation
+### 5. Synthetic DGP ablation
 
 Sweep rank, unit heterogeneity δ, time heterogeneity η, and noise σ on a fully synthetic panel (`N=200`, `T=50`, `30` MC trials per grid point, `Block` assignment).
 
@@ -169,7 +194,7 @@ Useful overrides: `--pattern Staggered`, `--trials 50`, `--methods OLS_DID SDID`
 
 ---
 
-### 5. Synthetic DGP robustness
+### 6. Synthetic DGP robustness
 
 One treatment level (`Δ = 0.1`) on the same `N=200`, `T=50` panel. The reference DGP is the usual Gaussian low-rank baseline, iid Gaussian noise, and additive heterogeneous effect. The other settings are AR(1) noise (`ρ = 0.5`), Student-t noise (3 degrees of freedom), a nonnegative low-rank baseline with Gamma-distributed factors and Poisson noise (`mean(M) = 1`), and a cell effect proportional to `|M|`. AR(1) and Student-t noise are scaled to the same variance as the reference, and the baseline-dependent effect is scaled so the treated-cell average still equals the reference ATT. Estimators run on IID, Block, Staggered, and Adaptive only where they are valid.
 
@@ -187,7 +212,7 @@ python -m causaltensor.analysis.synthetic_robustness
 
 ---
 
-### 6. Synthetic — load tests
+### 7. Synthetic — load tests
 
 Wall time, peak RSS during fitting (`rss_fit_peak_mb`), and ATT relative error on an `N × T` grid. Tight caps below are useful for a quick smoke run; drop them for the full grid.
 
@@ -221,6 +246,7 @@ results/
 ├── power_analysis/<dataset>/
 ├── synthetic_ablation/
 ├── synthetic_robustness/
+├── cate/
 └── load_tests/
 ```
 
@@ -233,6 +259,7 @@ results/
 | `power_analysis.py` | Null calibration + empirical power |
 | `synthetic_ablation.py` | Synthetic DGP sensitivity (rank, heterogeneity, noise) |
 | `synthetic_robustness.py` | One-level check: AR(1), heavy tails, baseline-dependent effect |
+| `cate.py` | PWT Block CATE runner; the experiment is `semi_synthetic.cate.run_cate` |
 | `load_tests.py` | Synthetic scalability: time, memory, ATT error |
 | `plot.py` | Figures from the CSVs in `results/` |
 

@@ -80,7 +80,7 @@ def run_robustness(
     method_names = list(DEFAULT_METHODS if methods is None else methods)
     rows: List[Dict[str, Any]] = []
 
-    for dgp_idx, (dgp_name, dgp_kwargs) in enumerate(DGPS):
+    for dgp_name, dgp_kwargs in DGPS:
         for pattern_idx, pattern in enumerate(VALID_PATTERNS):
             valid = [
                 m
@@ -90,9 +90,10 @@ def run_robustness(
             if not valid:
                 continue
             for trial in range(trials):
+                # Shared across DGPs so one pattern/trial uses the same M and Z.
                 trial_seed = int(
                     np.random.SeedSequence(
-                        [seed, dgp_idx, pattern_idx, trial]
+                        [seed, pattern_idx, trial]
                     ).generate_state(1)[0]
                 )
                 O, Z, tau_star = generate(

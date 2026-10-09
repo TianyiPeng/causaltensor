@@ -457,6 +457,61 @@ def _combined_counterfactual_figure(df: pd.DataFrame) -> Optional[plt.Figure]:
     return fig
 
 
+_CATE_GROUPS = (
+    ("hc", "Low", "Low HC"),
+    ("hc", "High", "High HC"),
+    ("csh_i", "Low", "Low Investment"),
+    ("csh_i", "High", "High Investment"),
+    ("openness", "Low", "Low Openness"),
+    ("openness", "High", "High Openness"),
+)
+
+
+def plot_cate_figure(metrics: pd.DataFrame, gates: pd.DataFrame) -> plt.Figure:
+    """PEHE–correlation scatter above covariate-group effects."""
+    fig, axes = plt.subplots(2, 1, figsize=(8.4, 8.6), layout="constrained")
+    fig.patch.set_facecolor("white")
+    summary = metrics.groupby("method")[["pehe", "corr"]].mean()
+    methods = _ordered_methods(summary.index)
+    ax = axes[0]
+    for method in methods:
+        ax.scatter(
+            summary.loc[method, "pehe"],
+            summary.loc[method, "corr"],
+            s=46,
+            color=method_color(method),
+            label=method,
+            zorder=3,
+        )
+    ax.set_xlabel("PEHE")
+    ax.set_ylabel(r"corr$(\hat\tau_i,\tau_i)$")
+    ax.set_title("(a) CATE recovery")
+    _style_panel(ax)
+
+    ax = axes[1]
+    x = np.arange(len(_CATE_GROUPS))
+    true = []
+    for covariate, group, _label in _CATE_GROUPS:
+        sub = gates[(gates["covariate"] == covariate) & (gates["group"] == group)]
+        true.append(float(sub["tau_true"].mean()) if len(sub) else np.nan)
+    ax.plot(x, true, color="black", marker="o", ms=8, lw=2.2, label="True", zorder=3)
+    for method in methods:
+        ys = []
+        g = gates[gates["method"] == method]
+        for covariate, group, _label in _CATE_GROUPS:
+            sub = g[(g["covariate"] == covariate) & (g["group"] == group)]
+            ys.append(float(sub["tau_hat"].mean()) if len(sub) else np.nan)
+        ax.plot(x, ys, color=method_color(method), marker="o", ms=5, lw=1.4, label=method)
+    ax.set_xticks(x)
+    ax.set_xticklabels([label for _c, _g, label in _CATE_GROUPS], rotation=25, ha="right")
+    ax.set_ylabel("Treatment effect")
+    ax.set_title("(b) Group average effects")
+    _style_panel(ax)
+    handles, labels = axes[1].get_legend_handles_labels()
+    fig.legend(handles, labels, loc="outside lower center", ncol=4, frameon=False, fontsize=12)
+    return fig
+
+
 def save_real_counterfactual_figures(df: pd.DataFrame, output_dir: Path, dpi: int = 120) -> None:
     """Combined counterfactual PNG from a counterfactual-series CSV."""
     fig_all = _combined_counterfactual_figure(df)
@@ -470,6 +525,7 @@ def plot_from_results(root: Optional[Path] = None, dpi: int = 120) -> None:
     _plot_power(root / "power_analysis", dpi)
     _plot_ablation(root / "synthetic_ablation", dpi)
     _plot_robustness(root / "synthetic_robustness", dpi)
+    _plot_cate(root / "cate", dpi)
     _plot_load(root / "load_tests", dpi)
     _plot_real(root / "real_data")
 
@@ -506,6 +562,17 @@ def _plot_robustness(folder: Path, dpi: int) -> None:
     for csv in sorted(folder.glob("robustness_*_trials.csv")):
         fig = plot_robustness(pd.read_csv(csv))
         _save(fig, csv.with_name(csv.name.replace("_trials.csv", ".png")), dpi)
+
+
+def _plot_cate(folder: Path, dpi: int) -> None:
+    if not folder.is_dir():
+        return
+    for csv in sorted(folder.glob("cate_*_metrics.csv")):
+        gates = csv.with_name(csv.name.replace("_metrics.csv", "_gates.csv"))
+        if not gates.is_file():
+            continue
+        fig = plot_cate_figure(pd.read_csv(csv), pd.read_csv(gates))
+        _save(fig, csv.with_name(csv.name.replace("_metrics.csv", ".png")), dpi)
 
 
 def _plot_load(folder: Path, dpi: int) -> None:

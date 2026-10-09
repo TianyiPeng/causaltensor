@@ -25,6 +25,7 @@ Usage
 """
 
 from causaltensor.semi_synthetic.aa_test import run_aa_test
+from causaltensor.semi_synthetic.cate import run_cate
 from causaltensor.semi_synthetic.empirical_power import (
     empirical_critical_abs_tau,
     run_empirical_power_grid,
@@ -34,6 +35,7 @@ from causaltensor.semi_synthetic.experiment import run_experiment
 __all__ = [
     "run_experiment",
     "run_aa_test",
+    "run_cate",
     "empirical_critical_abs_tau",
     "run_empirical_power_grid",
 ]
