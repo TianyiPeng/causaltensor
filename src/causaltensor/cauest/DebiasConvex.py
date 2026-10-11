@@ -41,6 +41,16 @@ def _gavish_donoho_rank(s, shape):
     return max(int(np.sum(s >= thresh)), 1)
 
 
+def _energy_rank(s, spectrum_cut):
+    """Largest rank whose cumulative squared energy stays within ``1 - spectrum_cut``."""
+    s = np.asarray(s, dtype=float)
+    total = float(np.sum(s**2))
+    if total <= 0 or len(s) == 0:
+        return 1
+    ratios = np.cumsum(s**2) / total
+    return max(int(np.sum(ratios <= 1.0 - float(spectrum_cut))), 1)
+
+
 class DCResult(Result):
     def __init__(self, baseline=None, tau=None, std=None, return_tau_scalar=False):
         super().__init__(baseline=baseline, tau=tau, return_tau_scalar=return_tau_scalar,
@@ -115,14 +125,17 @@ class DCPanelSolver(PanelSolver):
         ----------
         suggest_r : int or None, optional
             Baseline rank.  Overrides the value passed at construction.
-            If ``None`` and ``auto_rank=True``, rank is the number of singular
-            values of ``O`` above the Gavish-Donoho noise bulk. The noise level
-            is the median singular value.
+            If ``None`` and ``auto_rank=True``, rank is the minimum of the
+            Gavish-Donoho rank and the energy rank. The Gavish-Donoho rank
+            counts singular values of ``O`` above the noise bulk, with the
+            noise level equal to the median singular value. The energy rank is
+            the largest rank whose cumulative squared energy stays within
+            ``1 - spectrum_cut``, and is at least 1.
         auto_rank : bool, optional
             Select rank automatically when ``suggest_r`` is not given (default
             ``True``).
         spectrum_cut : float, optional
-            Unused. Kept so existing callers still run.
+            Variance tail excluded from the energy rank (default ``0.002``).
         method : {'auto', 'convex', 'non-convex'}, optional
             Optimisation strategy.  ``'auto'`` picks whichever of convex and
             non-convex gives a lower residual (default).
@@ -322,7 +335,7 @@ class DCPanelSolver(PanelSolver):
 
     def DC_PR_auto_rank(self, spectrum_cut = 0.002, method='convex', method_non_neg=None):
         s = np.linalg.svd(self.O, full_matrices = False, compute_uv=False)
-        suggest_r = _gavish_donoho_rank(s, self.O.shape)
+        suggest_r = min(_gavish_donoho_rank(s, self.O.shape), _energy_rank(s, spectrum_cut))
         return self.DC_PR_with_suggested_rank(suggest_r = suggest_r, method=method, method_non_neg=method_non_neg)
 
 

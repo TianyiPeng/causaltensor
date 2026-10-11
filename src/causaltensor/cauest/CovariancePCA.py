@@ -79,10 +79,8 @@ def _derived_rng_seed(seed: int, offset: int) -> int:
 
 def _rank_from_spectral_energy(s, spectrum_cut, energy_tail_tol):
     """
-    Discrete rank like :meth:`DCPanelSolver.DC_PR_auto_rank`: count of prefixes
-    whose cumulative squared-singular-value ratio stays below ``1 - spectrum_cut``,
-    applied to covariance singular values ``s``, then cap by the covariance
-    tail-scan bound.
+    Count of covariance singular-value prefixes whose cumulative squared energy
+    stays within ``1 - spectrum_cut``, then cap by the covariance tail-scan bound.
     """
     stot_sq = float(np.sum(s**2))
     if stot_sq <= 0:
