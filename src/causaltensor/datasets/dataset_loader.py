@@ -183,7 +183,7 @@ def load_dataset(
         Tuple of (Y_df, Z_df, X_df) where Z_df and X_df may be None
     
     Available datasets:
-        - smoking: California smoking ban (1988)
+        - smoking: California Proposition 99 tobacco-control program (1989)
         - basque: Basque Country GDP (1975)
         - german_reunification: West Germany reunification (1990)
         - texas: Texas prison reform (1993)
@@ -207,7 +207,7 @@ def load_dataset(
 
 
 def _load_smoking_dataset(datasets_path: str) -> Tuple[pd.DataFrame, pd.DataFrame, pd.DataFrame]:
-    """Load smoking dataset - California smoking ban (1988)"""
+    """Load smoking dataset - California Proposition 99 (effective 1989)."""
     _require_pyreadr("smoking")
     result = pyreadr.read_r(f'{datasets_path}smoking.rda')
     df = list(result.values())[0]
@@ -229,7 +229,7 @@ def _load_smoking_dataset(datasets_path: str) -> Tuple[pd.DataFrame, pd.DataFram
     
     # Create Y_df, Z_df, and X_df
     Y_df = create_y_dataframe(df, index_col="state", column_col="year", value_col="cigsale")
-    Z_df = create_z_dataframe(Y_df, treated_entity='California', treatment_start_year=1988)
+    Z_df = create_z_dataframe(Y_df, treated_entity='California', treatment_start_year=1989)
     
     cols_to_avg = [col for col in df.columns if col not in ['state', 'year', 'cigsale']]
     X_df = create_x_dataframe(

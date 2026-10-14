@@ -176,6 +176,14 @@ python power_analysis.py movielens --pattern IID --baseline control
 
 `python -m causaltensor.analysis.plot` writes `results/power_analysis/composite_power_1x4.png` and `composite_null_tau_1x4.png` when the four paper CSVs are present (PWT Block, PWT Staggered, MovieLens IID, MovieLens Adaptive).
 
+Standardized effect magnitudes for the four paper baselines:
+
+```bash
+python -m causaltensor.analysis.standardized_effects
+```
+
+**Output:** `results/datasets.csv` — `mean(|M|)`, `SD(M)`, residual `SD(R)`, and `τ*/SD(M)` at Δ = 0.05, 0.10, 0.20.
+
 With `--baseline control`, filenames use the `control_` prefix when multiple baselines share a folder (e.g. `control_Block_null_trials.csv`).
 
 ---
@@ -253,6 +261,7 @@ python load_tests.py --timeout 20 --memory-mb 100 --n-reps 3
 
 ```
 results/
+├── datasets.csv
 ├── real_data/<dataset>/
 ├── rct/
 ├── semi_synthetic_data/<dataset>/
@@ -275,6 +284,8 @@ results/
 | `synthetic_robustness.py` | One-level check: AR(1), heavy tails, baseline-dependent effect |
 | `cate.py` | PWT Block CATE runner; the experiment is `semi_synthetic.cate.run_cate` |
 | `load_tests.py` | Synthetic scalability: time, memory, ATT error |
+| `standardized_effects.py` | Control-baseline `mean(|M|)`, `SD(M)`, and `τ*/SD(M)` at Δ = 5/10/20% |
+| `validate_prop99.py` | Prop99 vs `synthdid`, `MCPanel`, and pysyncon RSC |
 | `plot.py` | Figures from the CSVs in `results/` |
 
 Analysis scripts write CSVs. `python -m causaltensor.analysis.plot` reads `results/` and writes the PNGs. Each script supports `--help` for the full CLI.

@@ -43,6 +43,7 @@ DEFAULT_METHODS: Dict[str, List[str]] = {
     "SDID": ["Block", "Staggered"],
     "SC": ["Block", "Staggered"],
     "RSC": ["Block", "Staggered"],
+    "TC_BASELINE": ["IID", "Block", "Staggered", "Adaptive"],
 }
 
 

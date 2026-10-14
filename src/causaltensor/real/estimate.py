@@ -47,7 +47,8 @@ def estimate(
     method : str or list of str
         Estimator name(s).  Valid choices::
 
-            ``DCPR``, ``MC_NNM_CV``, ``CovPCA``, ``OLS_DID``, ``SDID``, ``SC``, ``RSC``
+            ``DCPR``, ``MC_NNM_CV``, ``CovPCA``, ``OLS_DID``, ``SDID``, ``SC``,
+            ``RSC``, ``TC_BASELINE``
 
         (same as :data:`~causaltensor.utils.common.CANONICAL_ESTIMATOR_METHODS`).
 

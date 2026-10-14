@@ -35,7 +35,9 @@ _COMPOSITE_PANELS = (
     ("movielens", "IID", "MovieLens — IID"),
     ("movielens", "Adaptive", "MovieLens — Adaptive"),
 )
-_WIDE_METHOD_ORDER = ("OLS_DID", "SDID", "DCPR", "MC_NNM_CV", "SC", "RSC", "CovPCA")
+_WIDE_METHOD_ORDER = (
+    "OLS_DID", "SDID", "DCPR", "MC_NNM_CV", "SC", "RSC", "CovPCA", "TC_BASELINE"
+)
 
 # Estimator colors in ``DEFAULT_METHODS`` order.
 _METHOD_LINE_COLORS = (
@@ -54,6 +56,8 @@ _METHOD_LINE_COLORS = (
 
 def method_color(method: str) -> str:
     """Line color for ``method``, fixed by its place in ``DEFAULT_METHODS``."""
+    if method == "TC_BASELINE":
+        return "#616161"
     keys = list(DEFAULT_METHODS)
     idx = keys.index(method) if method in keys else 0
     return _METHOD_LINE_COLORS[idx % len(_METHOD_LINE_COLORS)]
@@ -195,7 +199,6 @@ def _draw_power_panel(ax, power_df, methods, colors, title, *, short_xlabel: boo
             marker="o", ms=5, linewidth=1.8, color=color, label=meth,
         )
     ax.set_ylim(-0.05, 1.05)
-    ax.axhline(0.8, color="gray", linestyle=":", linewidth=0.9)
     ax.set_title(title)
     ax.set_xlabel(
         r"relative effect $\Delta$" if short_xlabel
@@ -453,7 +456,7 @@ def _combined_counterfactual_figure(df: pd.DataFrame) -> Optional[plt.Figure]:
     idx = _x_axis_tick_indices(T)
     ax.set_xticks(idx)
     ax.set_xticklabels([labels[i] for i in idx], rotation=90, fontsize=14, ha="center", va="top")
-    fig.legend(loc="outside lower center", ncol=4, frameon=False, fontsize=15, handlelength=3.2, borderaxespad=0.15)
+    fig.legend(loc="outside lower center", ncol=5, frameon=False, fontsize=15, handlelength=3.2, borderaxespad=0.15)
     return fig
 
 

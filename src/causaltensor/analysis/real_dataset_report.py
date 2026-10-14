@@ -1,7 +1,7 @@
 """
 Real-dataset treatment-effect reports using the same estimators as
 ``utils.common.get_fit_result_from_method`` (DCPR, MC-NNM CV, CovPCA,
-OLS_DID, SDID, SC, RSC).
+OLS_DID, SDID, SC, RSC, TC-baseline).
 
 Only datasets that ship with a treatment matrix ``Z`` can produce a full report
 (classic case studies and PWT benchmarks). Large recommendation-style panels
@@ -45,6 +45,7 @@ DEFAULT_METHODS: Tuple[str, ...] = (
     "SDID",
     "SC",
     "RSC",
+    "TC_BASELINE",
 )
 
 
@@ -104,7 +105,7 @@ def run_real_data_report(
     methods : sequence of str
         Estimator keys accepted by ``get_fit_result_from_method``. For dataset
         ``dunnhumby``, the list is filtered to methods valid for general /
-        Adaptive assignment (DCPR, MC-NNM CV, CovPCA only).
+        Adaptive assignment (DCPR, MC-NNM CV, CovPCA, and TC-baseline).
     datasets_path : str, optional
         ``datasets/raw`` directory; default is the package raw folder.
     counterfactual_unit_row : int, optional
@@ -120,7 +121,7 @@ def run_real_data_report(
         datasets_path = default_raw_datasets_path()
 
     if dataset_name.lower() == "dunnhumby":
-        methods_seq = ["DCPR", "MC_NNM_CV", "CovPCA"]
+        methods_seq = ["DCPR", "MC_NNM_CV", "CovPCA", "TC_BASELINE"]
     else:
         methods_seq = list(methods)
     methods = tuple(dict.fromkeys(methods_seq))
