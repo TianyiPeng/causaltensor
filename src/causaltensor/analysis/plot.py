@@ -247,42 +247,54 @@ def plot_ablation_figure(df: pd.DataFrame) -> plt.Figure:
     return fig
 
 
+def _bootstrap_mean_ci(x: np.ndarray, rng: np.random.Generator, n_boot: int = 2000):
+    x = np.asarray(x, dtype=float)
+    x = x[np.isfinite(x)]
+    if x.size == 0:
+        return np.nan, np.nan, np.nan
+    mean = float(np.mean(x))
+    if x.size == 1:
+        return mean, mean, mean
+    boots = rng.choice(x, size=(n_boot, x.size), replace=True).mean(axis=1)
+    lo, hi = np.quantile(boots, [0.025, 0.975])
+    return mean, float(lo), float(hi)
+
+
 def plot_robustness(df: pd.DataFrame) -> plt.Figure:
-    """One panel per assignment. Points are mean relative error ± 1 s.d."""
+    """One panel per assignment. Points are mean relative ATT error with 95% bootstrap CIs."""
     key_order = _ordered_methods(df["method"])
     dgp_order = [name for name, _ in DGPS]
     x_base = np.arange(len(dgp_order))
     fig, axes = plt.subplots(1, len(_PANEL_ORDER), figsize=(16, 4.8), sharey=True, layout="constrained")
     fig.patch.set_facecolor("white")
+    rng = np.random.default_rng(0)
     for ax, pattern in zip(axes, _PANEL_ORDER):
-        stats = (
-            df.loc[df["pattern"] == pattern]
-            .groupby(["dgp", "method"])["error"]
-            .agg(mean="mean", std="std")
-            .reset_index()
-        )
-        methods = [m for m in key_order if (stats["method"] == m).any()]
+        sub = df.loc[df["pattern"] == pattern]
+        methods = [m for m in key_order if (sub["method"] == m).any()]
         n = max(len(methods), 1)
         dodge = 0.8 / n
         for i, method in enumerate(methods):
-            g = stats.loc[stats["method"] == method]
-            xs, ys, yerr = [], [], []
+            g = sub.loc[sub["method"] == method]
+            xs, ys, ylo, yhi = [], [], [], []
             for j, dgp in enumerate(dgp_order):
-                row = g.loc[g["dgp"] == dgp]
-                if row.empty:
+                err = g.loc[g["dgp"] == dgp, "error"].to_numpy()
+                if err.size == 0:
                     continue
+                mean, lo, hi = _bootstrap_mean_ci(err, rng)
                 xs.append(x_base[j] + (i - (len(methods) - 1) / 2) * dodge)
-                ys.append(float(row["mean"].iloc[0]))
-                yerr.append(float(row["std"].iloc[0]))
+                ys.append(mean)
+                ylo.append(max(0.0, mean - lo))
+                yhi.append(max(0.0, hi - mean))
             ax.errorbar(
-                xs, ys, yerr=yerr, fmt="o", color=method_color(method), label=method,
+                xs, ys, yerr=np.vstack([ylo, yhi]), fmt="o",
+                color=method_color(method), label=method,
                 capsize=2, markersize=5, linewidth=1.2,
             )
         ax.set_xticks(x_base)
-        ax.set_xticklabels([_DGP_LABELS[d] for d in dgp_order], rotation=25, ha="right")
+        ax.set_xticklabels([_DGP_LABELS[d] for d in dgp_order], rotation=90, ha="center", va="top")
         ax.set_title(pattern)
         _style_panel(ax)
-    axes[0].set_ylabel("Mean relative error")
+    axes[0].set_ylabel("Mean relative ATT error")
     axes[0].yaxis.label.set_size(12)
     _figure_legend(fig, axes)
     return fig
@@ -334,7 +346,7 @@ def plot_load_test_heatmap_figure(df_agg: pd.DataFrame, methods: Sequence[str]) 
     """Wide heatmaps: three metric rows, one column per estimator."""
     methods_list = list(methods)
     fig, axes = plt.subplots(3, len(methods_list), figsize=(2.05 * len(methods_list) + 0.8, 6.6), squeeze=False)
-    rownames = ["Wall time (median, s)", "RSS fit peak (median, MiB)", "Relative ATT error (median)"]
+    rownames = ["Wall time (mean, s)", "RSS fit peak (mean, MiB)", "Relative ATT error (mean)"]
     time_pv = _pivot_ordered(df_agg, metric="time_s", methods_order=methods_list)
     rss_pv = _pivot_ordered(df_agg, metric="rss_fit_peak_mb", methods_order=methods_list)
     err_pv = _pivot_ordered(df_agg, metric="relative_error", methods_order=methods_list)
@@ -376,7 +388,7 @@ def plot_load_test_heatmap_figure(df_agg: pd.DataFrame, methods: Sequence[str]) 
             if i == 0:
                 ax.set_title(method, fontsize=9)
             fig.colorbar(im, ax=ax, fraction=0.046, pad=0.04)
-    fig.suptitle("Load test: median time, rss_fit_peak_mb, relative error over trials", fontsize=12, y=1.02)
+    fig.suptitle("Load test: mean time, rss_fit_peak_mb, relative error across successful repetitions", fontsize=12, y=1.02)
     fig.tight_layout()
     return fig
 
@@ -471,8 +483,8 @@ _CATE_GROUPS = (
 
 
 def plot_cate_figure(metrics: pd.DataFrame, gates: pd.DataFrame) -> plt.Figure:
-    """Root-PEHE–correlation scatter above covariate-group effects."""
-    fig, axes = plt.subplots(2, 1, figsize=(6.5, 6.2), layout="constrained")
+    """Root-PEHE–correlation scatter beside covariate-group effects."""
+    fig, axes = plt.subplots(1, 2, figsize=(10.5, 4.2), layout="constrained", width_ratios=[1, 1.35])
     fig.patch.set_facecolor("white")
     summary = metrics.groupby("method")[["root_pehe", "corr"]].mean()
     methods = _ordered_methods(summary.index)
@@ -517,7 +529,7 @@ def plot_cate_figure(metrics: pd.DataFrame, gates: pd.DataFrame) -> plt.Figure:
             zorder=3,
         )
     ax.set_xticks(x)
-    ax.set_xticklabels([label for _c, _g, label in _CATE_GROUPS], rotation=25, ha="right")
+    ax.set_xticklabels([label for _c, _g, label in _CATE_GROUPS], rotation=90, ha="center", va="top")
     ax.set_ylabel("Treatment effect")
     ax.set_title("(b) Group average effects")
     _style_panel(ax)

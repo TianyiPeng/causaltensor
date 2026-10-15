@@ -82,7 +82,7 @@ python real_dataset_report.py dunnhumby
 
 `movielens` and `retailrocket` are registered loaders but omitted from the default real-data workflow when no `Z` is shipped.
 
-**D.C. Job Search Assistance RCT** (`jsa_dc`). 1996Q1 `CONTROL` versus `SJSA` (486 each). Outcomes are quarterly earnings from 1994Q4 through 1995Q4 and 1996Q2 through 1998Q3; the entry quarter is dropped. Treatment is a Block onset in 1996Q2. `RCT` is the difference in mean post-period earnings, with a 95% interval.
+**D.C. Job Search Assistance RCT** (`jsa_dc`). 1996Q1 `CONTROL` versus `SJSA` (486 each). Outcomes are quarterly earnings from 1994Q4 through 1995Q4 and 1996Q2 through 1998Q3; the entry quarter is dropped. Treatment is a Block onset in 1996Q2. `RCT` is the difference in mean post-period earnings, with a 95% interval. `ANCOVA_HC3` is the same post-period mean, adjusted for the five pre-period quarters, with HC3 standard errors.
 
 ```bash
 python -m causaltensor.analysis.rct
@@ -92,7 +92,7 @@ python -m causaltensor.analysis.rct
 
 | File | Contents |
 |------|----------|
-| `jsa_dc.csv` | `RCT` with its standard error and 95% interval, then one estimate per method |
+| `jsa_dc.csv` | `RCT` and `ANCOVA_HC3` with standard errors and 95% intervals, then one estimate per panel method |
 
 ---
 
@@ -228,7 +228,7 @@ python -m causaltensor.analysis.synthetic_robustness
 |------|----------|
 | `robustness_N200_T50_delta0.1_trials30_trials.csv` | Per-trial relative errors |
 | `robustness_N200_T50_delta0.1_trials30_summary.csv` | Mean ± std per `(dgp, pattern, method)` |
-| `robustness_N200_T50_delta0.1_trials30.png` | Mean relative error ± 1 s.d. by DGP (`python -m causaltensor.analysis.plot`); panels are Block, Staggered, IID, Adaptive |
+| `robustness_N200_T50_delta0.1_trials30.png` | Mean relative ATT error with 95% bootstrap CIs (`python -m causaltensor.analysis.plot`); panels are Block, Staggered, IID, Adaptive |
 
 ---
 
@@ -253,7 +253,7 @@ python load_tests.py --timeout 20 --memory-mb 100 --n-reps 3
 | `load_test_trials.csv` | One row per `(N, T, method, rep)` |
 | `load_test_cells.csv` | Aggregated per cell |
 | `load_test_summary.csv` | Per-estimator rollup |
-| `load_test_heatmaps.png` | Wide heatmaps (`python -m causaltensor.analysis.plot`): 3 metric rows × one column per estimator |
+| `load_test_heatmaps.png` | Wide heatmaps (`python -m causaltensor.analysis.plot`): mean wall time, peak RSS, and relative ATT error across successful repetitions; 3 metric rows × one column per estimator |
 
 ---
 
@@ -277,7 +277,7 @@ results/
 | Script | Role |
 |--------|------|
 | `real_dataset_report.py` | Real `Z`: tabular estimates and counterfactual series |
-| `rct.py` | D.C. JSA RCT: randomized estimate next to the seven fits |
+| `rct.py` | D.C. JSA RCT: randomized estimate, ANCOVA-HC3, and panel fits |
 | `semi_synthetic.py` | Real panel + injected τ: error distributions |
 | `power_analysis.py` | Null calibration + empirical power |
 | `synthetic_ablation.py` | Synthetic DGP sensitivity (rank, heterogeneity, noise) |

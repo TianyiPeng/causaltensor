@@ -1,6 +1,7 @@
 """
 Randomized earnings trials. The design-based estimate is the difference in
-mean post-period earnings, with a 95% interval. The seven estimators are fit
+mean post-period earnings, with a 95% interval. ANCOVA with HC3 standard
+errors adjusts for pre-period quarterly earnings. Panel estimators are fit
 on the same panel.
 
 CLI::
@@ -52,6 +53,19 @@ def _difference_in_means(outcome: np.ndarray, treated: np.ndarray):
     return estimate, se, estimate - _Z95 * se, estimate + _Z95 * se
 
 
+def _ancova_hc3(outcome: np.ndarray, treated: np.ndarray, covariates: np.ndarray):
+    n = outcome.size
+    X = np.column_stack([np.ones(n), treated.astype(float), covariates])
+    xtx_inv = np.linalg.pinv(X.T @ X)
+    beta = xtx_inv @ (X.T @ outcome)
+    resid = outcome - X @ beta
+    h = np.clip(np.sum(X * (X @ xtx_inv), axis=1), 0.0, 1.0 - 1e-12)
+    meat = X.T @ (X * ((resid / (1.0 - h)) ** 2)[:, None])
+    se = float(np.sqrt((xtx_inv @ meat @ xtx_inv)[1, 1]))
+    estimate = float(beta[1])
+    return estimate, se, estimate - _Z95 * se, estimate + _Z95 * se
+
+
 def run_rct(
     dataset: str,
     methods: Optional[Sequence[str]] = None,
@@ -66,15 +80,27 @@ def run_rct(
     post_mean = O[:, post].mean(axis=1)
 
     estimate, se, lo, hi = _difference_in_means(post_mean, treated)
-    rows = [{
-        "method": "RCT",
-        "estimate": estimate,
-        "se": se,
-        "ci_low": lo,
-        "ci_high": hi,
-        "ok": True,
-        "error": "",
-    }]
+    anc, anc_se, anc_lo, anc_hi = _ancova_hc3(post_mean, treated, O[:, ~post])
+    rows = [
+        {
+            "method": "RCT",
+            "estimate": estimate,
+            "se": se,
+            "ci_low": lo,
+            "ci_high": hi,
+            "ok": True,
+            "error": "",
+        },
+        {
+            "method": "ANCOVA_HC3",
+            "estimate": anc,
+            "se": anc_se,
+            "ci_low": anc_lo,
+            "ci_high": anc_hi,
+            "ok": True,
+            "error": "",
+        },
+    ]
 
     for method in DEFAULT_METHODS if methods is None else methods:
         res, err = get_fit_result_from_method(method, O, Z)
@@ -135,7 +161,7 @@ def main(argv: Optional[Sequence[str]] = None) -> Dict[str, Any]:
         default=None,
         metavar="METHOD",
         choices=DEFAULT_METHODS,
-        help="Estimator keys (default: all seven).",
+        help="Estimator keys (default: all panel estimators).",
     )
     args = parser.parse_args(list(argv) if argv is not None else None)
     return run_and_save(
